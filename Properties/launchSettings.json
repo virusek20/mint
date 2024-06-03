@@ -1,0 +1,16 @@
+{
+  "profiles": {
+    "MetalMintSolid": {
+      "commandName": "Project",
+      "commandLineArgs": "kmd encode \"mintsnake.glb\" \"E:\\temp\\metal mod gog\\stage\\init_jim\\res_mdl1\\snake.kmd\" --metadata \"E:\\temp\\metal mod gog\\stage\\init_jim\\res_mdl1\\snake_orig.kmd\""
+    },
+    "Profil 1": {
+      "commandName": "Project",
+      "commandLineArgs": "kmd decode --textures \"textures_00a\" \"E:\\temp\\metal mod\\stage\\s00a\\stg_mdl1\\00a.kmd\" 00a.glb"
+    },
+    "Profil 2": {
+      "commandName": "Project",
+      "commandLineArgs": "pcx batchdecode \"E:\\temp\\metal mod\\stage\\s00a\\stg_tex1\" \"textures_00a\""
+    }
+  }
+}
