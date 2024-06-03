@@ -136,6 +136,24 @@ public static class KmdImporter
             var c = tri.B;
             var d = tri.A;
 
+            // Vertex position
+            var ai = vertMap.IndexOfOrAdd(a.GetGeometry().GetPosition());
+            var bi = vertMap.IndexOfOrAdd(b.GetGeometry().GetPosition());
+            var ci = vertMap.IndexOfOrAdd(c.GetGeometry().GetPosition());
+            var di = vertMap.IndexOfOrAdd(d.GetGeometry().GetPosition());
+
+            // Duplicates
+            if (obj.VertexOrderTable.Any(v => v.X == ai && v.Y == bi && v.Z == ci && v.W == di)) continue;
+
+            obj.VertexOrderTable.Add(new Vector4UInt8
+            {
+                X = (byte)ai,
+                Y = (byte)bi,
+                Z = (byte)ci,
+                W = (byte)di
+            });
+
+            // Vertex normal
             a.GetGeometry().TryGetNormal(out var na);
             b.GetGeometry().TryGetNormal(out var nb);
             c.GetGeometry().TryGetNormal(out var nc);
@@ -164,19 +182,7 @@ public static class KmdImporter
                 W = (byte)ndi
             });
 
-            var ai = vertMap.IndexOfOrAdd(a.GetGeometry().GetPosition());
-            var bi = vertMap.IndexOfOrAdd(b.GetGeometry().GetPosition());
-            var ci = vertMap.IndexOfOrAdd(c.GetGeometry().GetPosition());
-            var di = vertMap.IndexOfOrAdd(d.GetGeometry().GetPosition());
-
-            obj.VertexOrderTable.Add(new Vector4UInt8
-            {
-                X = (byte)ai,
-                Y = (byte)bi,
-                Z = (byte)ci,
-                W = (byte)di
-            });
-
+            // Textures
             var aTex = a.GetMaterial().GetTexCoord(0);
             var bTex = b.GetMaterial().GetTexCoord(0);
             var cTex = c.GetMaterial().GetTexCoord(0);
@@ -191,6 +197,10 @@ public static class KmdImporter
             var materialNum = (ushort)47255;//ushort.Parse(materialHash);
             obj.PCXHashedFileNames.Add(materialNum);
         }
+
+        obj.FaceCount = (uint)triangles.Count();
+        obj.VertexCount = (uint)vertMap.Count;
+        obj.NormalVertexCount = (uint)normVertMap.Count;
 
         var objPos = newModel.GetObjectPosition(obj);
         foreach (var vert in vertMap)
@@ -239,9 +249,9 @@ public static class KmdImporter
 
 
         const long maxVert = 126;
-        if (vertMap.Count >= maxVert)
+        if (obj.VertexCount >= maxVert)
         {
-            Console.WriteLine($"Bone '{bone}', has {vertMap.Count} verticies, splitting into multiple objects");
+            Console.WriteLine($"Bone '{bone}', has {obj.VertexCount} verticies, splitting into multiple objects");
 
             newModel.Header.ObjectCount++;
             newModel.Header.BoneCount++;
@@ -261,18 +271,19 @@ public static class KmdImporter
 
         obj.VertexCount = (uint)Math.Min(obj.VertexCount, maxVert);
         obj.VertexCoordsTable = obj.VertexCoordsTable.Take((int)obj.VertexCount).ToList();
-        obj.VertexOrderTable = obj.VertexOrderTable
-            .Where(pos => pos.X < maxVert && pos.Y < maxVert && pos.Z < maxVert && pos.W < maxVert)
-            .ToList();
 
-        obj.FaceCount = (uint)obj.VertexOrderTable.Count;
-        obj.NormalVertexCount = (uint)normVertMap.Count;
+        for (int i = 0; i < obj.VertexOrderTable.Count; i++)
+        {
+            var pos = obj.VertexOrderTable[i];
+            if (pos.X >= maxVert || pos.Y >= maxVert || pos.Z >= maxVert || pos.W >= maxVert)
+            {
+                obj.VertexOrderTable[i].X = 0;
+                obj.VertexOrderTable[i].Y = 0;
+                obj.VertexOrderTable[i].Z = 0;
+                obj.VertexOrderTable[i].W = 0;
+            }
+        }
 
         return obj;
-    }
-
-    private static void Split()
-    {
-
     }
 }
