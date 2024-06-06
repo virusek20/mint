@@ -18,6 +18,7 @@ public static class KmdExporter
 
         var materials = Directory.GetFiles(texturePath)
             .Select(p => Path.GetFileNameWithoutExtension(p))
+            .Distinct()
             .ToDictionary(StringExtensions.GV_StrCode_80016CCC)
             .Where(p => hashFiles.Contains(p.Key))
             .Select(p => (p.Key, new MaterialBuilder(p.Key.ToString())
