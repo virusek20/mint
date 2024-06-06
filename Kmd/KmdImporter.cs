@@ -188,10 +188,10 @@ public static class KmdImporter
             var cTex = c.GetMaterial().GetTexCoord(0);
             var dTex = d.GetMaterial().GetTexCoord(0);
 
-            obj.UvTable.Add(new Vector2UInt8 { X = (byte)(aTex.X * 256.0), Y = (byte)(aTex.Y * 256.0) });
-            obj.UvTable.Add(new Vector2UInt8 { X = (byte)(bTex.X * 256.0), Y = (byte)(bTex.Y * 256.0) });
-            obj.UvTable.Add(new Vector2UInt8 { X = (byte)(cTex.X * 256.0), Y = (byte)(cTex.Y * 256.0) });
-            obj.UvTable.Add(new Vector2UInt8 { X = (byte)(dTex.X * 256.0), Y = (byte)(dTex.Y * 256.0) });
+            obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(aTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(aTex.Y, 0, 1) * 256.0) });
+            obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(bTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(bTex.Y, 0, 1) * 256.0) });
+            obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(cTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(cTex.Y, 0, 1) * 256.0) });
+            obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(dTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(dTex.Y, 0, 1) * 256.0) });
 
             var materialHash = tri.Material.Name;
             var materialNum = (ushort)47255;//ushort.Parse(materialHash);
