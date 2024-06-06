@@ -216,13 +216,13 @@ public static class KmdImporter
             obj.VertexCoordsTable.Add(pos);
 
             // Object bounds
-            if (obj.BoundingBoxStart.X > pos.X) obj.BoundingBoxStart.X = pos.X;
-            if (obj.BoundingBoxStart.Y > pos.Y) obj.BoundingBoxStart.Y = pos.Y;
-            if (obj.BoundingBoxStart.Z > pos.Z) obj.BoundingBoxStart.Z = pos.Z;
+            if (obj.BoundingBoxStart.X > pos.X) obj.BoundingBoxStart = obj.BoundingBoxStart with { X = pos.X };
+            if (obj.BoundingBoxStart.Y > pos.Y) obj.BoundingBoxStart = obj.BoundingBoxStart with { Y = pos.Y };
+            if (obj.BoundingBoxStart.Z > pos.Z) obj.BoundingBoxStart = obj.BoundingBoxStart with { Z = pos.Z };
 
-            if (obj.BoundingBoxEnd.X < pos.X) obj.BoundingBoxEnd.X = pos.X;
-            if (obj.BoundingBoxEnd.Y < pos.Y) obj.BoundingBoxEnd.Y = pos.Y;
-            if (obj.BoundingBoxEnd.Z < pos.Z) obj.BoundingBoxEnd.Z = pos.Z;
+            if (obj.BoundingBoxEnd.X < pos.X) obj.BoundingBoxEnd = obj.BoundingBoxEnd with { X = pos.X };
+            if (obj.BoundingBoxEnd.Y < pos.Y) obj.BoundingBoxEnd = obj.BoundingBoxEnd with { Y = pos.Y };
+            if (obj.BoundingBoxEnd.Z < pos.Z) obj.BoundingBoxEnd = obj.BoundingBoxEnd with { Z = pos.Z };
 
             // Model bounds
             /*
@@ -258,9 +258,7 @@ public static class KmdImporter
 
             var copy = obj.CreateDeepCopy();
             copy.ParentBoneId = bone;
-            copy.BonePosition.X = 0;
-            copy.BonePosition.Y = 0;
-            copy.BonePosition.Z = 0;
+            copy.BonePosition = new(0, 0, 0);
 
             var skipFace = obj.VertexOrderTable.First(pos => pos.X >= maxVert || pos.Y >= maxVert || pos.Z >= maxVert || pos.W >= maxVert);
             var newTriangles = triangles.Skip(obj.VertexOrderTable.IndexOf(skipFace));
@@ -277,10 +275,7 @@ public static class KmdImporter
             var pos = obj.VertexOrderTable[i];
             if (pos.X >= maxVert || pos.Y >= maxVert || pos.Z >= maxVert || pos.W >= maxVert)
             {
-                obj.VertexOrderTable[i].X = 0;
-                obj.VertexOrderTable[i].Y = 0;
-                obj.VertexOrderTable[i].Z = 0;
-                obj.VertexOrderTable[i].W = 0;
+                obj.VertexOrderTable[i] = new(0, 0, 0, 0);
             }
         }
 

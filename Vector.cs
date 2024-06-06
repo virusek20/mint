@@ -1,75 +1,12 @@
 ﻿namespace MetalMintSolid;
 
-public class Vector2Int8
-{
-    public sbyte X { get; set; }
-    public sbyte Y { get; set; }
+public readonly record struct Vector2Int8(sbyte X, sbyte Y);
+public readonly record struct Vector2UInt8(byte X, byte Y);
+public readonly record struct Vector2UInt16(ushort X, ushort Y);
+public readonly record struct Vector3Int32(int X, int Y, int Z);
+public readonly record struct Vector4Int16(short X, short Y, short Z, short W);
+public readonly record struct Vector4UInt8(byte X, byte Y, byte Z, byte W);
 
-    public override string ToString()
-    {
-        return $"({X}, {Y})";
-    }
-}
-
-public class Vector2UInt8
-{
-    public byte X { get; set; }
-    public byte Y { get; set; }
-
-    public override string ToString()
-    {
-        return $"({X}, {Y})";
-    }
-}
-
-public class Vector2UInt16
-{
-    public ushort X { get; set; }
-    public ushort Y { get; set; }
-
-    public override string ToString()
-    {
-        return $"({X}, {Y})";
-    }
-}
-
-public class Vector3Int32
-{
-    public int X { get; set; }
-    public int Y { get; set; }
-    public int Z { get; set; }
-
-    public override string ToString()
-    {
-        return $"({X}, {Y}, {Z})";
-    }
-}
-
-public class Vector4Int16
-{
-    public short X { get; set; }
-    public short Y { get; set; }
-    public short Z { get; set; }
-    public short W { get; set; }
-
-    public override string ToString()
-    {
-        return $"({X}, {Y}, {Z}, {W})";
-    }
-}
-
-public class Vector4UInt8
-{
-    public byte X { get; set; }
-    public byte Y { get; set; }
-    public byte Z { get; set; }
-    public byte W { get; set; }
-
-    public override string ToString()
-    {
-        return $"({X}, {Y}, {Z}, {W})";
-    }
-}
 
 public static class BinaryReaderVectorExtensions
 {
