@@ -260,11 +260,30 @@ public static class KmdImporter
             newModel.Header.BoneCount++;
 
             var copy = obj.CreateDeepCopy();
+
+            copy.VertexCoordsTable.Clear();
+            copy.VertexOrderTable.Clear();
+            copy.NormalVertexCoordsTable.Clear();
+            copy.NormalVertexOrderTable.Clear();
+            copy.UvTable.Clear();
+            copy.PCXHashedFileNames.Clear();
+
             copy.ParentBoneId = bone;
             copy.BonePosition = new(0, 0, 0);
 
             var skipFace = obj.VertexOrderTable.First(pos => pos.X >= maxVert || pos.Y >= maxVert || pos.Z >= maxVert || pos.W >= maxVert);
-            var newTriangles = triangles.Skip(obj.VertexOrderTable.IndexOf(skipFace));
+            var newTriangles = triangles.Where(tri =>
+            {
+                var a = tri.A.GetGeometry().GetPosition();
+                var b = tri.B.GetGeometry().GetPosition();
+                var c = tri.C.GetGeometry().GetPosition();
+
+                var ai = vertMap.IndexOf(a);
+                var bi = vertMap.IndexOf(b);
+                var ci = vertMap.IndexOf(c);
+
+                return ai >= maxVert || bi >= maxVert || ci >= maxVert;
+            });
 
             newModel.Objects.Add(copy);
             FromGltfObj(newModel, newModel.Objects.Count - 1, newTriangles);
@@ -272,15 +291,7 @@ public static class KmdImporter
 
         obj.VertexCount = (uint)Math.Min(obj.VertexCount, maxVert);
         obj.VertexCoordsTable = obj.VertexCoordsTable.Take((int)obj.VertexCount).ToList();
-
-        for (int i = 0; i < obj.VertexOrderTable.Count; i++)
-        {
-            var pos = obj.VertexOrderTable[i];
-            if (pos.X >= maxVert || pos.Y >= maxVert || pos.Z >= maxVert || pos.W >= maxVert)
-            {
-                obj.VertexOrderTable[i] = new(0, 0, 0, 0);
-            }
-        }
+        obj.VertexOrderTable = obj.VertexOrderTable.Where(pos => !(pos.X >= maxVert || pos.Y >= maxVert || pos.Z >= maxVert || pos.W >= maxVert)).ToList();
 
         return obj;
     }
