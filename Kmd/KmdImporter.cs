@@ -194,7 +194,10 @@ public static class KmdImporter
             obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(dTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(dTex.Y, 0, 1) * 256.0) });
 
             var materialHash = tri.Material.Name;
-            var materialNum = (ushort)47255;//ushort.Parse(materialHash);
+            var materialNum = (ushort)47252;
+            if (materialHash.Contains("replace")) 
+                materialNum = ushort.Parse(materialHash[..5]);
+
             obj.PCXHashedFileNames.Add(materialNum);
         }
 
