@@ -1,7 +1,6 @@
 ﻿using MetalMintSolid.Extensions;
 using SharpGLTF.Geometry;
 using SharpGLTF.Schema2;
-using System.Linq;
 using System.Numerics;
 
 namespace MetalMintSolid.Kmd;
@@ -143,7 +142,10 @@ public static class KmdImporter
             var di = vertMap.IndexOfOrAdd(d.GetGeometry().GetPosition());
 
             // Duplicates
-            if (obj.VertexOrderTable.Any(v => v.X == ai && v.Y == bi && v.Z == ci && v.W == di)) continue;
+            //if (obj.VertexOrderTable.Any(v => v.X == ai && v.Y == bi && v.Z == ci && v.W == di)) continue;
+
+            // Average mintcord users
+            //if (IsDegenerate(ai, bi, ci, di)) continue;
 
             obj.VertexOrderTable.Add(new Vector4UInt8
             {
@@ -193,6 +195,7 @@ public static class KmdImporter
             obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(cTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(cTex.Y, 0, 1) * 256.0) });
             obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(dTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(dTex.Y, 0, 1) * 256.0) });
 
+            
             var materialHash = tri.Material.Name;
             var materialNum = (ushort)47252;
             if (materialHash.Contains("replace")) 
@@ -294,5 +297,10 @@ public static class KmdImporter
         obj.VertexOrderTable = obj.VertexOrderTable.Where(pos => !(pos.X >= maxVert || pos.Y >= maxVert || pos.Z >= maxVert || pos.W >= maxVert)).ToList();
 
         return obj;
+    }
+
+    private static bool IsDegenerate(int a, int b, int c, int d)
+    {
+        return a == b || a == c || a == d || b == d;
     }
 }
