@@ -1,4 +1,5 @@
 ﻿using MetalMintSolid.Extensions;
+using MetalMintSolid.Kmd.Builder;
 using SharpGLTF.Geometry;
 using SharpGLTF.Schema2;
 using System.Numerics;
@@ -7,6 +8,8 @@ namespace MetalMintSolid.Kmd;
 
 public static class KmdImporter
 {
+    public const long MAX_OBJ_VERTS = 126;
+
     public static KmdModel FromGltf(ModelRoot root, KmdModel original)
     {
         var scene = root.DefaultScene;
@@ -74,9 +77,9 @@ public static class KmdImporter
             newModel.Objects.Add(new KmdObject
             {
                 BitFlags = o.BitFlags,
-                BonePosition = new() { X = (int)bonePos.X, Y = (int)bonePos.Y, Z = (int)bonePos.Z }, // TODO: Can we move this without breaking the animations?
-                BoundingBoxEnd = new() { X = int.MinValue, Y = int.MinValue, Z = int.MinValue },
-                BoundingBoxStart = new() { X = int.MaxValue, Y = int.MaxValue, Z = int.MaxValue },
+                BonePosition = new((int)Math.Round(bonePos.X), (int)Math.Round(bonePos.Y), (int)Math.Round(bonePos.Z)),
+                BoundingBoxEnd = new(int.MinValue, int.MinValue, int.MinValue),
+                BoundingBoxStart = new(int.MaxValue, int.MaxValue, int.MaxValue),
                 Padding = o.Padding,
                 ParentBoneId = o.ParentBoneId,
                 Unknown = o.Unknown,
@@ -121,186 +124,37 @@ public static class KmdImporter
         return newModel;
     }
 
-    private static KmdObject FromGltfObj(KmdModel newModel, int bone, IEnumerable<(IVertexBuilder A, IVertexBuilder B, IVertexBuilder C, Material Material)> triangles)
+    private static KmdObject FromGltfObj(KmdModel newModel, int bone, List<(IVertexBuilder A, IVertexBuilder B, IVertexBuilder C, Material Material)> triangles)
     {
         var obj = newModel.Objects[bone];
-
-        var vertMap = new List<Vector3>();
-        var normVertMap = new List<Vector3>();
-
-        foreach (var tri in triangles)
-        {
-            var a = tri.C;
-            var b = tri.B;
-            var c = tri.B;
-            var d = tri.A;
-
-            // Vertex position
-            var ai = vertMap.IndexOfOrAdd(a.GetGeometry().GetPosition());
-            var bi = vertMap.IndexOfOrAdd(b.GetGeometry().GetPosition());
-            var ci = vertMap.IndexOfOrAdd(c.GetGeometry().GetPosition());
-            var di = vertMap.IndexOfOrAdd(d.GetGeometry().GetPosition());
-
-            // Duplicates
-            //if (obj.VertexOrderTable.Any(v => v.X == ai && v.Y == bi && v.Z == ci && v.W == di)) continue;
-
-            // Average mintcord users
-            //if (IsDegenerate(ai, bi, ci, di)) continue;
-
-            obj.VertexOrderTable.Add(new Vector4UInt8
-            {
-                X = (byte)ai,
-                Y = (byte)bi,
-                Z = (byte)ci,
-                W = (byte)di
-            });
-
-            // Vertex normal
-            a.GetGeometry().TryGetNormal(out var na);
-            b.GetGeometry().TryGetNormal(out var nb);
-            c.GetGeometry().TryGetNormal(out var nc);
-            d.GetGeometry().TryGetNormal(out var nd);
-
-            var nai = normVertMap.IndexOfOrAdd(na);
-            var nbi = normVertMap.IndexOfOrAdd(nb);
-            var nci = normVertMap.IndexOfOrAdd(nc);
-            var ndi = normVertMap.IndexOfOrAdd(nd);
-
-            /*
-            obj.NormalVertexOrderTable.Add(new Vector4UInt8
-            {
-                X = (byte)(nai | 0x80),
-                Y = (byte)(nbi | 0x80),
-                Z = (byte)(nci | 0x80),
-                W = (byte)(ndi | 0x80)
-            });
-            */
-
-            obj.NormalVertexOrderTable.Add(new Vector4UInt8
-            {
-                X = (byte)nai,
-                Y = (byte)nbi,
-                Z = (byte)nci,
-                W = (byte)ndi
-            });
-
-            // Textures
-            var aTex = a.GetMaterial().GetTexCoord(0);
-            var bTex = b.GetMaterial().GetTexCoord(0);
-            var cTex = c.GetMaterial().GetTexCoord(0);
-            var dTex = d.GetMaterial().GetTexCoord(0);
-
-            obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(aTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(aTex.Y, 0, 1) * 256.0) });
-            obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(bTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(bTex.Y, 0, 1) * 256.0) });
-            obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(cTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(cTex.Y, 0, 1) * 256.0) });
-            obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(dTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(dTex.Y, 0, 1) * 256.0) });
-
-            
-            var materialHash = tri.Material.Name;
-            var materialNum = (ushort)47252;
-            if (materialHash.Contains("replace")) 
-                materialNum = ushort.Parse(materialHash[..5]);
-
-            obj.PCXHashedFileNames.Add(materialNum);
-        }
-
-        obj.FaceCount = (uint)triangles.Count();
-        obj.VertexCount = (uint)vertMap.Count;
-        obj.NormalVertexCount = (uint)normVertMap.Count;
-
         var objPos = newModel.GetObjectPosition(obj);
-        foreach (var vert in vertMap)
+
+        var builder = new KmdObjectBuilder(obj, objPos);
+
+        var inputTriangles = triangles.Select(t => new Triangle(t.A, t.B, t.C, t.Material)).ToList();
+        var (quads, tris) = Util.QuadRebuilder.FindQuads(inputTriangles);
+
+        quads.RemoveWhere(builder.TryAddQuad);
+        tris.RemoveWhere(builder.TryAddTriangle);
+
+        // We went over the limit, split into new bone
+        while (quads.Count > 0 || tris.Count > 0)
         {
-            var pos = new Vector4Int16
-            {
-                X = (short)Math.Round(vert.X - objPos.X),
-                Y = (short)Math.Round(vert.Y - objPos.Y),
-                Z = (short)Math.Round(vert.Z - objPos.Z),
-                W = -1, // TODO: Parenting
-            };
-
-            obj.VertexCoordsTable.Add(pos);
-
-            // Object bounds
-            if (obj.BoundingBoxStart.X > pos.X) obj.BoundingBoxStart = obj.BoundingBoxStart with { X = pos.X };
-            if (obj.BoundingBoxStart.Y > pos.Y) obj.BoundingBoxStart = obj.BoundingBoxStart with { Y = pos.Y };
-            if (obj.BoundingBoxStart.Z > pos.Z) obj.BoundingBoxStart = obj.BoundingBoxStart with { Z = pos.Z };
-
-            if (obj.BoundingBoxEnd.X < pos.X) obj.BoundingBoxEnd = obj.BoundingBoxEnd with { X = pos.X };
-            if (obj.BoundingBoxEnd.Y < pos.Y) obj.BoundingBoxEnd = obj.BoundingBoxEnd with { Y = pos.Y };
-            if (obj.BoundingBoxEnd.Z < pos.Z) obj.BoundingBoxEnd = obj.BoundingBoxEnd with { Z = pos.Z };
-
-            // Model bounds
-            /*
-            if (vert.X < newModel.Header.BoundingBoxStart.X) newModel.Header.BoundingBoxStart.X = (int)vert.X;
-            if (vert.Y < newModel.Header.BoundingBoxStart.Y) newModel.Header.BoundingBoxStart.Y = (int)vert.Y;
-            if (vert.Z < newModel.Header.BoundingBoxStart.Z) newModel.Header.BoundingBoxStart.Z = (int)vert.Z;
-
-            if (vert.X > newModel.Header.BoundingBoxEnd.X) newModel.Header.BoundingBoxEnd.X = (int)vert.X;
-            if (vert.Y > newModel.Header.BoundingBoxEnd.Y) newModel.Header.BoundingBoxEnd.Y = (int)vert.Y;
-            if (vert.Z > newModel.Header.BoundingBoxEnd.Z) newModel.Header.BoundingBoxEnd.Z = (int)vert.Z;
-            */
-        }
-
-        foreach (var vert in normVertMap)
-        {
-            obj.NormalVertexCoordsTable.Add(new Vector4Int16
-            {
-                X = (short)Math.Round(vert.X * -4096.0),
-                Y = (short)Math.Round(vert.Y * -4096.0),
-                Z = (short)Math.Round(vert.Z * -4096.0),
-                W = -1, // TODO: What even is this
-            });
-        }
-
-
-        const long maxVert = 126;
-        if (obj.VertexCount >= maxVert)
-        {
-            Console.WriteLine($"Bone '{bone}', has {obj.VertexCount} verticies, splitting into multiple objects");
+            Console.WriteLine($"Bone '{bone}', has {quads.Count} remaining quads and {triangles.Count} remaining triangles, splitting into multiple objects");
 
             newModel.Header.ObjectCount++;
             newModel.Header.BoneCount++;
 
-            var copy = obj.CreateDeepCopy();
+            var newBone = builder.NewBone(bone);
+            newModel.Objects.Add(newBone);
 
-            copy.VertexCoordsTable.Clear();
-            copy.VertexOrderTable.Clear();
-            copy.NormalVertexCoordsTable.Clear();
-            copy.NormalVertexOrderTable.Clear();
-            copy.UvTable.Clear();
-            copy.PCXHashedFileNames.Clear();
+            var subBuilder = new KmdObjectBuilder(newBone, newModel.GetObjectPosition(newBone));
+            quads.RemoveWhere(subBuilder.TryAddQuad);
+            tris.RemoveWhere(subBuilder.TryAddTriangle);
 
-            copy.ParentBoneId = bone;
-            copy.BonePosition = new(0, 0, 0);
-
-            var skipFace = obj.VertexOrderTable.First(pos => pos.X >= maxVert || pos.Y >= maxVert || pos.Z >= maxVert || pos.W >= maxVert);
-            var newTriangles = triangles.Where(tri =>
-            {
-                var a = tri.A.GetGeometry().GetPosition();
-                var b = tri.B.GetGeometry().GetPosition();
-                var c = tri.C.GetGeometry().GetPosition();
-
-                var ai = vertMap.IndexOf(a);
-                var bi = vertMap.IndexOf(b);
-                var ci = vertMap.IndexOf(c);
-
-                return ai >= maxVert || bi >= maxVert || ci >= maxVert;
-            });
-
-            newModel.Objects.Add(copy);
-            FromGltfObj(newModel, newModel.Objects.Count - 1, newTriangles);
+            subBuilder.Build();
         }
 
-        obj.VertexCount = (uint)Math.Min(obj.VertexCount, maxVert);
-        obj.VertexCoordsTable = obj.VertexCoordsTable.Take((int)obj.VertexCount).ToList();
-        obj.VertexOrderTable = obj.VertexOrderTable.Where(pos => !(pos.X >= maxVert || pos.Y >= maxVert || pos.Z >= maxVert || pos.W >= maxVert)).ToList();
-
-        return obj;
-    }
-
-    private static bool IsDegenerate(int a, int b, int c, int d)
-    {
-        return a == b || a == c || a == d || b == d;
+        return builder.Build();
     }
 }

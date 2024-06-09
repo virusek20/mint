@@ -1,6 +1,4 @@
-﻿using System.Reflection.PortableExecutable;
-
-namespace MetalMintSolid.Kmd;
+﻿namespace MetalMintSolid.Kmd;
 
 public class KmdObject
 {
