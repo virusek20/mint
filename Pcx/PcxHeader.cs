@@ -79,12 +79,35 @@ public class PcxHeader
 
     public ushort MgsMagic { get; set; } = 12345;
 
-    // TODO: WTF is this
+    /// <summary>
+    /// Unkwnown
+    /// </summary>
+    // TODO: Can be reverse engineered from the MGS decompilation repo
     public ushort Flags { get; set; } = 8;
+
+    /// <summary>
+    /// X position of image data in VRAM
+    /// </summary>
     public ushort Px { get; set; } = 0x0380;
+
+    /// <summary>
+    /// Y position of image data in VRAM
+    /// </summary>
     public ushort Py { get; set; } = 0x0040;
+
+    /// <summary>
+    /// X position of CLUT table in VRAM
+    /// </summary>
     public ushort Cx { get; set; } = 0x0310;
+
+    /// <summary>
+    /// Y position of CLUT table in VRAM
+    /// </summary>
     public ushort Cy { get; set; } = 0x00E2;
+
+    /// <summary>
+    /// Number of used colors, this will determine how many pixels will be copied to VRAM at <see cref="Cx"/>, <see cref="Cy"/>
+    /// </summary>
     public ushort NColors { get; set; } = 16;
 
     /// <summary>

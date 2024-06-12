@@ -11,7 +11,7 @@ public record Triangle(IVertexBuilder A, IVertexBuilder B, IVertexBuilder C, Mat
     {
         if (Material != triangle.Material) return false;
 
-        HashSet<Vector3> verticies =
+        HashSet<Vector3> vertices =
         [
             A.GetGeometry().GetPosition(),
             B.GetGeometry().GetPosition(),
@@ -21,7 +21,7 @@ public record Triangle(IVertexBuilder A, IVertexBuilder B, IVertexBuilder C, Mat
             triangle.C.GetGeometry().GetPosition(),
         ];
 
-        HashSet<IVertexBuilder> verticies2 =
+        HashSet<IVertexBuilder> vertices2 =
         [
             A,
             B,
@@ -31,19 +31,20 @@ public record Triangle(IVertexBuilder A, IVertexBuilder B, IVertexBuilder C, Mat
             triangle.C,
         ];
 
-        if (verticies.Count != verticies2.Count)
+        // This covers cases like discontinuous UVs
+        // TODO: Do we even need the second set, can't we just use this one for all checks?
+        if (vertices.Count != vertices2.Count)
         {
             return false;
         }
 
-        // todo. check uv continuity
-        if (verticies.Count == 3)
+        if (vertices.Count == 3)
         {
-            Console.WriteLine("Identical triangles detected, try merging vertices by distance");
+            Console.WriteLine("Identical triangles detected, try deduplicating / merging vertices by distance");
             return false;
         }
 
-        return verticies.Count <= 4;
+        return vertices.Count <= 4;
     }
 
     public Vector3 Normal()
@@ -73,17 +74,17 @@ public record Triangle(IVertexBuilder A, IVertexBuilder B, IVertexBuilder C, Mat
         Vector3 other = new(0, 1, 0);
         if (Math.Abs(Math.Abs(Vector3.Dot(other, normal)) - 1.0) < 0.0001) other = new(0, 0, -1);
 
-        var x_axis = Vector3.Normalize(Vector3.Cross(other, normal));
-        var y_axis = Vector3.Normalize(Vector3.Cross(normal, x_axis));
+        var xAxis = Vector3.Normalize(Vector3.Cross(other, normal));
+        var yAxis = Vector3.Normalize(Vector3.Cross(normal, xAxis));
 
         List<double> angles = [];
         foreach (var v in vertices)
         {
             var vector = v.GetGeometry().GetPosition() - centroid;
-            var x_pos = Vector3.Dot(vector, x_axis);
-            var y_pos = Vector3.Dot(vector, y_axis);
+            var xPos = Vector3.Dot(vector, xAxis);
+            var yPos = Vector3.Dot(vector, yAxis);
 
-            var angle = Math.Atan2(y_pos, x_pos);
+            var angle = Math.Atan2(yPos, xPos);
             angles.Add(angle);
         }
 
@@ -103,6 +104,9 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
     /// <summary>
     /// Tries to add a triangle to the current object,
     /// checking whether the total vertex count won't go over <see cref="KmdImporter.MAX_OBJ_VERTS"/>
+    /// <para>
+    /// If the triangle has all vertex color R components set to 1.0, it will be treated as a double sided triangle.
+    /// </para>
     /// </summary>
     /// <returns>Whether the triangle has been added to this object</returns>
     public bool TryAddTriangle(Triangle triangle)
@@ -112,10 +116,29 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
 
     /// <summary>
     /// Tries to add a quad to the current object,
-    /// checking whether the total vertex count won't go over <see cref="KmdImporter.MAX_OBJ_VERTS"/>
+    /// checking whether the total vertex count won't go over <see cref="KmdImporter.MAX_OBJ_VERTS"/>.
+    /// <para>
+    /// If the quad has all vertex color R components set to 1.0, it will be treated as a double sided quad.
+    /// </para>
     /// </summary>
+    /// <param name="quad"></param>
     /// <returns>Whether the quad has been added to this object</returns>
     public bool TryAddQuad(Quad quad)
+    {
+        // Not using an optional parameter because I'd have to replace a bunch of direct LINQ calls with lambdas to partially apply the parameter
+        return TryAddQuad(quad, false);
+    }
+
+    /// <summary>
+    /// Tries to add a quad to the current object,
+    /// checking whether the total vertex count won't go over <see cref="KmdImporter.MAX_OBJ_VERTS"/>.
+    /// <para>
+    /// If <paramref name="ignoreVertexColor"/> is false, then if the quad has all vertex color R components set to 1.0, it will be treated as a double sided quad.
+    /// </para>
+    /// </summary>
+    /// <param name="ignoreVertexColor">Whether vertex colors should ignored</param>
+    /// <returns>Whether the quad has been added to this object</returns>
+    public bool TryAddQuad(Quad quad, bool ignoreVertexColor)
     {
         var a = quad.D;
         var b = quad.C;
@@ -128,8 +151,8 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
         var dp = d.GetGeometry().GetPosition();
 
         HashSet<Vector3> uniqueVerts = [ ap, bp, cp, dp ];
-        var neededVerticies = 4 - uniqueVerts.Count(_vertices.Contains);
-        if (_vertices.Count + neededVerticies > KmdImporter.MAX_OBJ_VERTS) return false;
+        var neededVertices = 4 - uniqueVerts.Count(_vertices.Contains);
+        if (_vertices.Count + neededVertices > KmdImporter.MAX_OBJ_VERTS) return false;
 
         // Invalid triangles
         // if (IsDegenerate(tri.A, tri.B, tri.C)) continue;
@@ -200,10 +223,24 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
             ushort materialNum = 47252;
 
             var materialHash = quad.Material.Name;
-            if (materialHash.Contains("replace"))
-                materialNum = ushort.Parse(materialHash[..5]);
+            if (materialHash.Contains("_replace"))
+            {
+                materialHash = materialHash.Replace("_replace", "");
+                materialNum = ushort.Parse(materialHash);
+            }
 
             obj.PCXHashedFileNames.Add(materialNum);
+        }
+
+        // Double sided face support
+        if (ignoreVertexColor == false &&
+        a.GetMaterial().MaxColors > 0 && a.GetMaterial().GetColor(0).X == 1 &&
+        b.GetMaterial().MaxColors > 0 && b.GetMaterial().GetColor(0).X == 1 &&
+        c.GetMaterial().MaxColors > 0 && c.GetMaterial().GetColor(0).X == 1 &&
+        d.GetMaterial().MaxColors > 0 && d.GetMaterial().GetColor(0).X == 1)
+        {
+            // No need to check return value, this will never add new vertices
+            TryAddQuad(new(a, b, c, d, quad.Material), true);
         }
 
         return true;
@@ -218,7 +255,7 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
         obj.NormalVertexCount = (uint)_normalVertices.Count;
         obj.FaceCount = (uint)obj.PCXHashedFileNames.Count;
 
-        var objectSpaceVerticies = _vertices.Select(vertex => new Vector4Int16
+        var objectSpaceVertices = _vertices.Select(vertex => new Vector4Int16
         {
             X = (short)Math.Round(vertex.X - objectPosition.X),
             Y = (short)Math.Round(vertex.Y - objectPosition.Y),
@@ -226,10 +263,10 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
             W = -1, // TODO: Parenting, should be the index of vertex in parent object which this vertex should be parented to?
         }).ToList();
 
-        // Bounding boxes are in model space (not object space)
-        RecalculateBounds(objectSpaceVerticies);
+        // Bounding boxes are in object space (not bone space)
+        RecalculateBounds(objectSpaceVertices);
 
-        foreach (var vertex in objectSpaceVerticies) obj.VertexCoordsTable.Add(vertex);
+        foreach (var vertex in objectSpaceVertices) obj.VertexCoordsTable.Add(vertex);
         foreach (var normalVertex in _normalVertices)
         {
             obj.NormalVertexCoordsTable.Add(new Vector4Int16
@@ -263,9 +300,9 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
         return copy;
     }
 
-    private void RecalculateBounds(List<Vector4Int16> verticies)
+    private void RecalculateBounds(List<Vector4Int16> vertices)
     {
-        foreach (var pos in verticies)
+        foreach (var pos in vertices)
         {
             if (obj.BoundingBoxStart.X > pos.X) obj.BoundingBoxStart = obj.BoundingBoxStart with { X = pos.X };
             if (obj.BoundingBoxStart.Y > pos.Y) obj.BoundingBoxStart = obj.BoundingBoxStart with { Y = pos.Y };

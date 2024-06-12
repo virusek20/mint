@@ -24,14 +24,6 @@ public static class KmdImporter
 
         var skin = meshNode.Skin;
         if (skin.JointsCount != original.Header.BoneCount) throw new NotSupportedException("Bone count does not match!");
-        var jointDict = new Dictionary<int, int>();
-        for (int i = 0; i < skin.JointsCount; i++)
-        {
-            var jointName = skin.GetJoint(i).Joint.Name;
-            var jointNumber = jointName.Substring(5);
-
-            jointDict.Add(i, int.Parse(jointNumber));
-        }
 
         var mesh = meshNode.Mesh;
         var rootBone = armature.VisualChildren.FirstOrDefault(c => c.Name == "bone_0");
@@ -71,7 +63,6 @@ public static class KmdImporter
         for (int i = 0; i < boneCount; i++)
         {
             var o = original.Objects[i];
-            var index = jointDict[i];
             var bonePos = skin.GetJoint(i).Joint.LocalTransform.Translation;
 
             newModel.Objects.Add(new KmdObject

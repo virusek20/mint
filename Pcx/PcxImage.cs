@@ -45,7 +45,7 @@ public class PcxImage
         return decoded;
     }
 
-    public static PcxImage FromBitmap(Bitmap bitmap)
+    public static PcxImage FromBitmap(Bitmap bitmap, List<Color>? palette = null)
     {
         var w = bitmap.Width;
         var h = bitmap.Height;
@@ -74,17 +74,37 @@ public class PcxImage
             Padding = new byte[40]
         };
 
-        HashSet<Color> colors = [];
-        for (int x = 0; x < w; x++)
+        if (palette == null)
         {
-            for (int y = 0; y < h; y++)
+            palette = [];
+
+            for (int x = 0; x < w; x++)
             {
-                colors.Add(bitmap.GetPixel(x, y));
+                for (int y = 0; y < h; y++)
+                {
+                    var color = bitmap.GetPixel(x, y);
+                    if (color.A != 255) color = Color.Black;
+
+                    // Alternative transparent
+                    // TODO: HACK: Just temp
+                    if (color.R == 255 && color.G == 0 && color.B == 255) color = Color.Black;
+
+                    palette.Add(color);
+                }
+            }
+        }
+        else
+        {
+            if (palette.Contains(Color.FromArgb(255, 0, 255)))
+            {
+                palette.Remove(Color.FromArgb(255, 0, 255));
+                palette.Add(Color.FromArgb(0, 0, 0));
             }
         }
 
-        if (colors.Count > 16) throw new NotSupportedException("EGA palettes are limited to 16 colors");
-        header.Palette = [.. colors];
+        palette = palette.Distinct().ToList();
+        if (palette.Count > 16) throw new NotSupportedException("EGA palettes are limited to 16 colors");
+        header.Palette = [.. palette];
 
         var indexedImage = new byte[w, h];
         for (int x = 0; x < w; x++)
@@ -93,6 +113,9 @@ public class PcxImage
             {
                 // TODO: Slow
                 var pixel = bitmap.GetPixel(x, y);
+                if (pixel.A != 255) pixel = Color.Black;
+                if (pixel.R == 255 && pixel.G == 0 && pixel.B == 255) pixel = Color.Black;
+
                 indexedImage[x, y] = (byte)Array.IndexOf(header.Palette, pixel);
             }
         }
@@ -109,10 +132,13 @@ public class PcxImage
             {
                 for (int i = 0; i < 8; i++)
                 {
-                    plane1[x] |= (byte)(((indexedImage[(x * 8) + i, y] & 0x01) >> 0) << (7 - i));
-                    plane2[x] |= (byte)(((indexedImage[(x * 8) + i, y] & 0x02) >> 1) << (7 - i));
-                    plane3[x] |= (byte)(((indexedImage[(x * 8) + i, y] & 0x04) >> 2) << (7 - i));
-                    plane4[x] |= (byte)(((indexedImage[(x * 8) + i, y] & 0x08) >> 3) << (7 - i));
+                    var xSrc = (x * 8) + i;
+                    if (xSrc >= w) continue;
+
+                    plane1[x] |= (byte)(((indexedImage[xSrc, y] & 0x01) >> 0) << (7 - i));
+                    plane2[x] |= (byte)(((indexedImage[xSrc, y] & 0x02) >> 1) << (7 - i));
+                    plane3[x] |= (byte)(((indexedImage[xSrc, y] & 0x04) >> 2) << (7 - i));
+                    plane4[x] |= (byte)(((indexedImage[xSrc, y] & 0x08) >> 3) << (7 - i));
                 }
             }
 
@@ -132,7 +158,7 @@ public class PcxImage
             var b = uncompressed[index];
             var repeat = 1;
 
-            // TODO: This is optional really
+            // TODO: This compression is optional really
             /*
             while ((index % 9) != 8 && index + repeat < uncompressed.Length && uncompressed[index + repeat] == b)
             {

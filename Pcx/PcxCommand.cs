@@ -1,10 +1,20 @@
-﻿using System.CommandLine;
+﻿using MetalMintSolid.Util;
+using System.CommandLine;
 using System.Drawing;
+using System.Text.Json;
 
 namespace MetalMintSolid.Pcx;
 
 public static class PcxCommand
 {
+    private static readonly JsonSerializerOptions _serializerOptions = new()
+    {
+        Converters = 
+        {
+            new ColorJsonConverter()
+        }
+    };
+
     public static Command AddPcxCommand(this Command command)
     {
         var pcxCommand = new Command("pcx", "Manipulate PCX images");
@@ -13,10 +23,12 @@ public static class PcxCommand
         var pcxEncodeSourceArgument = new Argument<FileInfo>("source", "Source image");
         var pcxEncodeTargetArgument = new Argument<FileInfo?>("target", "Output filename");
         var pcxEncodeMetadataSourceOption = new Option<FileInfo?>("--metadata", "Copy metadata from supplied file, properly sets MGS specific data (useful for texture swapping)");
+        var pcxEncodePaletteOption = new Option<FileInfo?>("--palette", "Uses a predefined palette instead of generating one (useful for when multiple textures share the same CLUT)");
         pcxEncodeCommand.AddArgument(pcxEncodeSourceArgument);
         pcxEncodeCommand.AddArgument(pcxEncodeTargetArgument);
         pcxEncodeCommand.AddOption(pcxEncodeMetadataSourceOption);
-        pcxEncodeCommand.SetHandler(EncodeHandler, pcxEncodeSourceArgument, pcxEncodeTargetArgument, pcxEncodeMetadataSourceOption);
+        pcxEncodeCommand.AddOption(pcxEncodePaletteOption);
+        pcxEncodeCommand.SetHandler(EncodeHandler, pcxEncodeSourceArgument, pcxEncodeTargetArgument, pcxEncodeMetadataSourceOption, pcxEncodePaletteOption);
 
         var pcxDecodeCommand = new Command("decode", "Decodes a PCX image to a btimap");
         var pcxDecodeCommandSourceArgument = new Argument<FileInfo>("source", "Source PCX image");
@@ -40,13 +52,23 @@ public static class PcxCommand
         return pcxCommand;
     }
 
-    private static void EncodeHandler(FileInfo source, FileInfo? target, FileInfo? metadata)
+    private static void EncodeHandler(FileInfo source, FileInfo? target, FileInfo? metadata, FileInfo? palette)
     {
         if (!source.Exists) throw new FileNotFoundException("Specified bitmap was not found", source.FullName);
         target ??= new FileInfo($"{Path.GetFileNameWithoutExtension(source.FullName)}.pcx");
 
+        List<Color>? colors = null;
+        if (palette != null)
+        {
+            if (!palette.Exists) throw new FileNotFoundException("Specified palette file was not found", palette.FullName);
+            using var paletteFile = palette.OpenRead();
+
+            colors = JsonSerializer.Deserialize<List<Color>>(paletteFile, _serializerOptions) ?? throw new NotSupportedException("Failed to deserialize palette contents");
+            if (colors.Count > 16) throw new NotSupportedException($"Palette contains {colors.Count} colors, only up to 16 are supported");
+        }
+
         var bitmap = new Bitmap(source.FullName);
-        var pcx = PcxImage.FromBitmap(bitmap);
+        var pcx = PcxImage.FromBitmap(bitmap, colors);
 
         if (metadata != null)
         {
