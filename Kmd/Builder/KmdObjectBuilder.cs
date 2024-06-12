@@ -210,10 +210,10 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
         var cTex = c.GetMaterial().GetTexCoord(0);
         var dTex = d.GetMaterial().GetTexCoord(0);
 
-        obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(aTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(aTex.Y, 0, 1) * 256.0) });
-        obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(bTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(bTex.Y, 0, 1) * 256.0) });
-        obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(cTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(cTex.Y, 0, 1) * 256.0) });
-        obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(dTex.X, 0, 1) * 256.0), Y = (byte)Math.Round(Math.Clamp(dTex.Y, 0, 1) * 256.0) });
+        obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(aTex.X, 0, 1) * 255.0), Y = (byte)Math.Round(Math.Clamp(aTex.Y, 0, 1) * 255.0) });
+        obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(bTex.X, 0, 1) * 255.0), Y = (byte)Math.Round(Math.Clamp(bTex.Y, 0, 1) * 255.0) });
+        obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(cTex.X, 0, 1) * 255.0), Y = (byte)Math.Round(Math.Clamp(cTex.Y, 0, 1) * 255.0) });
+        obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(dTex.X, 0, 1) * 255.0), Y = (byte)Math.Round(Math.Clamp(dTex.Y, 0, 1) * 255.0) });
 
 
         const bool DEBUG_TEXTURE = false;
