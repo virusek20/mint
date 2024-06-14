@@ -152,14 +152,13 @@ public static class BinaryReaderPcxHeaderExtensions
 
         if (header.BitsPerPlane != 1 || header.ColorPlanes != 4) throw new NotImplementedException("This image is probably not EGA");
         if (header.MgsMagic != 12345) throw new InvalidDataException($"MGSMagic is '{header.MgsMagic}', expected '12345'");
-        //if (header.NColors != 16) throw new InvalidDataException($"NColors is '{header.NColors}', expected '16'");
-        if (header.NColors != 16) Console.WriteLine($"NColors is '{header.NColors}', expected '16'");
 
         return header;
     }
 
     private static Color[] ReadPcxPalette(this BinaryReader reader)
     {
+        // TODO: This should respect NColors
         var palette = new Color[16];
 
         for (int i = 0; i < 16; i++)
@@ -201,6 +200,7 @@ public static class BinaryWriterPcxHeaderExtensions
 
     private static void Write(this BinaryWriter writer, Color[] palettte)
     {
+        // TODO: This should respect NColors
         if (palettte.Length > 16) throw new NotSupportedException("Palette size cannot be larger than 16 for EGA");
 
         for (int i = 0; i < 16; i++)
