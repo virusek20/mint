@@ -1,6 +1,8 @@
-﻿using MetalMintSolid.Util;
+﻿using MetalMintSolid.Extensions;
+using MetalMintSolid.Util;
 using System.CommandLine;
 using System.Drawing;
+using System.Reflection.PortableExecutable;
 using System.Text.Json;
 
 namespace MetalMintSolid.Pcx;
@@ -37,16 +39,24 @@ public static class PcxCommand
         pcxDecodeCommand.AddArgument(pcxDecodeCommandTargetArgument);
         pcxDecodeCommand.SetHandler(DecodeHandler, pcxDecodeCommandSourceArgument, pcxDecodeCommandTargetArgument);
 
-        var pcxBatchDecodeCommand = new Command("batchdecode", "Decodes a PCX image to a btimap");
+        var pcxBatchDecodeCommand = new Command("batchdecode", "Decodes PCX images to a bitmaps");
         var pcxBatchDecodeCommandSourceArgument = new Argument<DirectoryInfo>("source", "Source directory");
         var pcxBatchDecodeCommandTargetArgument = new Argument<DirectoryInfo>("target", "Output directoy");
         pcxBatchDecodeCommand.AddArgument(pcxBatchDecodeCommandSourceArgument);
         pcxBatchDecodeCommand.AddArgument(pcxBatchDecodeCommandTargetArgument);
         pcxBatchDecodeCommand.SetHandler(BatchDecodeHandler, pcxBatchDecodeCommandSourceArgument, pcxBatchDecodeCommandTargetArgument);
 
+        var pcxAnalyzeCommand = new Command("analyze", "Analyzes PCX image(s)");
+        var pcxAnalyzeCommandSourceArgument = new Argument<string>("source", "Source file / directory");
+        var pcxAnalyzeVerboseOption = new Option<bool>("--verbose", () => false, "Display verbose image info");
+        pcxAnalyzeCommand.AddArgument(pcxAnalyzeCommandSourceArgument);
+        pcxAnalyzeCommand.AddOption(pcxAnalyzeVerboseOption);
+        pcxAnalyzeCommand.SetHandler(AnalyzeHandler, pcxAnalyzeCommandSourceArgument, pcxAnalyzeVerboseOption);
+
         pcxCommand.AddCommand(pcxDecodeCommand);
         pcxCommand.AddCommand(pcxEncodeCommand);
         pcxCommand.AddCommand(pcxBatchDecodeCommand);
+        pcxCommand.AddCommand(pcxAnalyzeCommand);
 
         command.Add(pcxCommand);
         return pcxCommand;
@@ -126,6 +136,61 @@ public static class PcxCommand
 
             var pcx = reader.ReadPcxImage();
             pcx.AsBitmap().Save(outputPath);
+        }
+    }
+
+    private static void AnalyzeHandler(string source, bool verbose)
+    {
+        if (!Path.Exists(source)) throw new DirectoryNotFoundException("Specified source was not found");
+
+        var texturesFiles = Directory.Exists(source) ? new DirectoryInfo(source).GetFiles() : [ new FileInfo(source) ];
+        var textures = texturesFiles.Select(file =>
+        {
+            try
+            {
+                using var stream = file.OpenRead();
+                using var reader = new BinaryReader(stream);
+                var header = reader.ReadPcxImage().Header;
+
+                return (name: Path.GetFileNameWithoutExtension(file.FullName), header, w: header.WindowMax.X + 1, h: header.WindowMax.Y + 1);
+            }
+            catch
+            {
+                return (name: Path.GetFileNameWithoutExtension(file.FullName), header: null, w: -1, h: -1);
+            }
+        }).ToList();
+
+        if (verbose == false) Console.WriteLine("Name (hash) width x height @ pX x pY cX x cY");
+
+        foreach (var (name, header, w, h) in textures)
+        {
+            // Probably not a PCX image 
+            if (header == null) continue;
+
+            if (verbose)
+            {
+                Console.WriteLine($"{name}:");
+                Console.WriteLine($"  Hash: {StringExtensions.GV_StrCode_80016CCC(name)}");
+                Console.WriteLine($"  Size: {w}x{h}");
+                Console.WriteLine($"  VRAM Position: {header.Px}x{header.Py}");
+                Console.WriteLine($"  CLUT Position: {header.Cx}x{header.Cy}");
+                Console.WriteLine($"  Flags: {header.Flags}");
+                Console.WriteLine($"  Color count: {header.NColors}");
+
+                Console.WriteLine("  Palette:");
+                for (int i = 0; i< header.NColors; i++)
+                {
+                    var color = header.Palette[i];
+                    Console.Write($"    #{color.R:X2}{color.G:X2}{color.B:X2} ({color.R}, {color.G}, {color.B})");
+                    
+                    if (color.R == 0 && color.G == 0 && color.B == 0) Console.WriteLine(" | Transparent");
+                    else Console.WriteLine();
+                }
+            }
+            else
+            {
+                Console.WriteLine($"{name} ({StringExtensions.GV_StrCode_80016CCC(name)}): {w}x{h} @ {header.Px}x{header.Py} {header.Cx}x{header.Cy}");
+            }
         }
     }
 }
