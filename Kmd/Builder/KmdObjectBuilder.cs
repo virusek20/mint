@@ -215,7 +215,6 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
         obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(cTex.X, 0, 1) * 255.0), Y = (byte)Math.Round(Math.Clamp(cTex.Y, 0, 1) * 255.0) });
         obj.UvTable.Add(new Vector2UInt8 { X = (byte)Math.Round(Math.Clamp(dTex.X, 0, 1) * 255.0), Y = (byte)Math.Round(Math.Clamp(dTex.Y, 0, 1) * 255.0) });
 
-
         const bool DEBUG_TEXTURE = false;
         if (DEBUG_TEXTURE) obj.PCXHashedFileNames.Add(60655);
         else
@@ -232,16 +231,22 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
             obj.PCXHashedFileNames.Add(materialNum);
         }
 
-        // Double sided face support
+        // Double sided face support: quads who's verts all have 1 in the red color channel are double-sided
         if (ignoreVertexColor == false &&
-        a.GetMaterial().MaxColors > 0 && a.GetMaterial().GetColor(0).X == 1 &&
-        b.GetMaterial().MaxColors > 0 && b.GetMaterial().GetColor(0).X == 1 &&
-        c.GetMaterial().MaxColors > 0 && c.GetMaterial().GetColor(0).X == 1 &&
-        d.GetMaterial().MaxColors > 0 && d.GetMaterial().GetColor(0).X == 1)
+            a.GetMaterial().MaxColors > 0 && a.GetMaterial().GetColor(1).X == 1 &&
+            b.GetMaterial().MaxColors > 0 && b.GetMaterial().GetColor(1).X == 1 &&
+            c.GetMaterial().MaxColors > 0 && c.GetMaterial().GetColor(1).X == 1 &&
+            d.GetMaterial().MaxColors > 0 && d.GetMaterial().GetColor(1).X == 1)
         {
             // No need to check return value, this will never add new vertices
             TryAddQuad(new(a, b, c, d, quad.Material), true);
         }
+
+        // Verts with 1 in the green color channel are marked as non-pairing
+        if (a.GetMaterial().MaxColors > 0 && a.GetMaterial().GetColor(1).Y == 1) obj.NonPairingVertexIndicies.Add(ai);
+        if (b.GetMaterial().MaxColors > 0 && b.GetMaterial().GetColor(1).Y == 1) obj.NonPairingVertexIndicies.Add(bi);
+        if (c.GetMaterial().MaxColors > 0 && c.GetMaterial().GetColor(1).Y == 1) obj.NonPairingVertexIndicies.Add(ci);
+        if (d.GetMaterial().MaxColors > 0 && d.GetMaterial().GetColor(1).Y == 1) obj.NonPairingVertexIndicies.Add(di);
 
         return true;
     }
@@ -260,7 +265,7 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
             X = (short)Math.Round(vertex.X - objectPosition.X),
             Y = (short)Math.Round(vertex.Y - objectPosition.Y),
             Z = (short)Math.Round(vertex.Z - objectPosition.Z),
-            W = -1, // TODO: Parenting, should be the index of vertex in parent object which this vertex should be parented to?
+            W = -1, // Parenting, this gets set later
         }).ToList();
 
         // Bounding boxes are in object space (not bone space)

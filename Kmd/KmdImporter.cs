@@ -1,7 +1,10 @@
 ﻿using MetalMintSolid.Extensions;
 using MetalMintSolid.Kmd.Builder;
+using MetalMintSolid.Util;
 using SharpGLTF.Geometry;
 using SharpGLTF.Schema2;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Numerics;
 
 namespace MetalMintSolid.Kmd;
@@ -63,10 +66,12 @@ public static class KmdImporter
         for (int i = 0; i < boneCount; i++)
         {
             var o = original.Objects[i];
-            var bonePos = skin.GetJoint(i).Joint.LocalTransform.Translation;
+            var joint = skin.GetJoint(i).Joint;
+            var bonePos = joint.LocalTransform.Translation;
 
             newModel.Objects.Add(new KmdObject
             {
+                Name = joint.Name,
                 BitFlags = o.BitFlags,
                 BonePosition = new((int)Math.Round(bonePos.X), (int)Math.Round(bonePos.Y), (int)Math.Round(bonePos.Z)),
                 BoundingBoxEnd = new(int.MinValue, int.MinValue, int.MinValue),
@@ -74,6 +79,7 @@ public static class KmdImporter
                 Padding = o.Padding,
                 ParentBoneId = o.ParentBoneId,
                 Unknown = o.Unknown,
+                NonPairingVertexIndicies = [],
                 VertexCoordsTable = [],
                 VertexOrderTable = [],
                 NormalVertexCoordsTable = [],
@@ -83,13 +89,32 @@ public static class KmdImporter
             });
         }
 
-        var gltfBones = mesh.Primitives
+        var gltfBoneTris = mesh.Primitives
             .SelectMany(p => p.EvaluateTriangles())
             .GroupBy(t => (int)t.A.GetSkinning().JointsLow.X);
 
-        foreach (var bone in gltfBones) FromGltfObj(newModel, bone.Key, [.. bone]);
+        foreach (var bone in gltfBoneTris) FromGltfObj(newModel, bone.Key, [.. bone]);
 
         uint rootOffset = 32 + 88 * (uint)newModel.Objects.Count;
+
+        Dictionary<string, string> boneNamesToParents = new Dictionary<string, string>()
+        {
+            { "bone_1", "bone_0" },
+            { "bone_4", "bone_1" },
+            { "bone_7", "bone_4" },
+            { "bone_8", "bone_7" },
+            { "bone_5", "bone_1" },
+            { "bone_9", "bone_5" },
+            { "bone_6", "bone_1" },
+            { "bone_10", "bone_6" },
+            { "bone_11", "bone_10" },
+            { "bone_2", "bone_0" },
+            { "bone_12", "bone_2" },
+            { "bone_13", "bone_12" },
+            { "bone_3", "bone_0" },
+            { "bone_14", "bone_3" },
+            { "bone_15", "bone_14" }
+        };
 
         foreach (var obj in newModel.Objects)
         {
@@ -110,8 +135,15 @@ public static class KmdImporter
 
             obj.TextureNameOffset = rootOffset;
             rootOffset += (uint)obj.PCXHashedFileNames.Count * 2;
-        }
 
+            if (boneNamesToParents.ContainsKey(obj.Name))
+            {
+                var parentBoneName = boneNamesToParents[obj.Name];
+                var parentBone = newModel.Objects.Find(o => o.Name == parentBoneName);
+                if (parentBone == null) throw new NotSupportedException("Missing parent bone");
+                obj.SetupParentBoneVertexPairs(parentBone, newModel);
+            }
+        }
         return newModel;
     }
 

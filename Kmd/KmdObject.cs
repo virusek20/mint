@@ -1,4 +1,6 @@
-﻿namespace MetalMintSolid.Kmd;
+﻿using System.Text.Json.Serialization;
+
+namespace MetalMintSolid.Kmd;
 
 public class KmdObject
 {
@@ -13,6 +15,8 @@ public class KmdObject
 
     public uint Unknown { get; set; }
 
+    public required string Name { get; set; }
+
     public uint VertexCount { get; set; }
     public uint VertexCoordOffset { get; set; }
     public uint VertexOrderOffset { get; set; }
@@ -25,6 +29,8 @@ public class KmdObject
     public uint TextureNameOffset { get; set; }
     public uint Padding { get; set; }
 
+    public required HashSet<int> NonPairingVertexIndicies { get; set; }
+
     public required List<Vector4Int16> VertexCoordsTable { get; set; }
     public required List<Vector4Int16> NormalVertexCoordsTable { get; set; }
 
@@ -34,6 +40,39 @@ public class KmdObject
     public required List<Vector2UInt8> UvTable { get; set; }
 
     public required List<ushort> PCXHashedFileNames { get; set; }
+
+    public void SetupParentBoneVertexPairs(KmdObject parentObject, KmdModel model)
+    {
+        var selfObjectPos = model.GetObjectPosition(this);
+        var parentObjectPos = model.GetObjectPosition(parentObject);
+
+        for (short i = 0; i < VertexCount; i++)
+        {
+            if (NonPairingVertexIndicies.Contains(i)) continue;
+
+            var ax = VertexCoordsTable[i].X + selfObjectPos.X;
+            var ay = VertexCoordsTable[i].Y + selfObjectPos.Y;
+            var az = VertexCoordsTable[i].Z + selfObjectPos.Z;
+            for (short j = 0; j < parentObject.VertexCount; j++)
+            {
+                var bx = parentObject.VertexCoordsTable[j].X + parentObjectPos.X;
+                var by = parentObject.VertexCoordsTable[j].Y + parentObjectPos.Y;
+                var bz = parentObject.VertexCoordsTable[j].Z + parentObjectPos.Z;
+
+                var dx = bx - ax;
+                var dy = by - ay;
+                var dz = bz - az;
+
+                var dist = dx * dx + dy * dy + dz * dz;
+                if (dist < 1)
+                {
+                    var newVert = VertexCoordsTable[i] with { W = j };
+                    VertexCoordsTable[i] = newVert;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 public static class BinaryReaderKmdObjectExtensions
@@ -42,6 +81,7 @@ public static class BinaryReaderKmdObjectExtensions
     {
         var kmd = new KmdObject
         {
+            Name = "",
             BitFlags = reader.ReadUInt32(),
             FaceCount = reader.ReadUInt32(),
             BoundingBoxStart = reader.ReadVector3Int32(),
@@ -58,6 +98,7 @@ public static class BinaryReaderKmdObjectExtensions
             UVOffset = reader.ReadUInt32(),
             TextureNameOffset = reader.ReadUInt32(),
             Padding = reader.ReadUInt32(),
+            NonPairingVertexIndicies = [],
             VertexCoordsTable = [],
             NormalVertexCoordsTable = [],
             VertexOrderTable = [],
