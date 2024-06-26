@@ -78,7 +78,7 @@ public static class KmdCommand
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 
         var textures = texturePath != null && texturePath.Exists ? texturePath.FullName : "";
-        var thing = kmd.ToGltf(textures);
-        thing.SaveGLB(target.FullName);
+        var modelRoot = kmd.ToGltf(textures);
+        modelRoot.SaveGLB(target.FullName);
     }
 }

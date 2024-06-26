@@ -23,9 +23,11 @@ Options:
   -?, -h, --help  Show help and usage information
 
 Commands:
-  dar  Manipulate DAR archives
-  pcx  Manipulate PCX images
-  kmd  Manipulate KMD models
+  dar           Manipulate DAR archives
+  pcx           Manipulate PCX images
+  kmd           Manipulate KMD models
+  dir           Manipulate DIR archives
+  hash <input>  Calculate MGS hash of a string
 ```
 
 ## Build instructions
@@ -37,12 +39,18 @@ Currently only Windows is supported due to System.Drawing usage.
 ## Tested platforms
 - PC - Original CD Version
 - PC - GOG
+- PS1 - US Version
+
+## WIP Platforms
+- Master Collection (this might take a while)
 
 ## File formats
 ### Supported MGS file formats
 - DAR (Archive)
 - PCX (Image / texture)
 - KMD (Model)
+- DIR (PSX Archive)
+- STG (PSX Stage file)
 
 ### Supported input file formats
 - GLTF (Model)
@@ -50,6 +58,9 @@ Currently only Windows is supported due to System.Drawing usage.
 
 ## References
 - https://github.com/FoxdieTeam/mgs_reversing/tree/master
+- https://github.com/metalgeardev/MGS1
+- https://github.com/Jayveer/MGS-KMD-Noesis
+- https://github.com/nuggslet/MGSM2Fix
 - https://www.mgsdevwiki.com/wiki/index.php
 - https://mgs.w00ty.com/mgs1/launcher
 - https://sketchfab.com/scuffward (Testing models)

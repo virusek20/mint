@@ -2,7 +2,6 @@
 using MetalMintSolid.Util;
 using System.CommandLine;
 using System.Drawing;
-using System.Reflection.PortableExecutable;
 using System.Text.Json;
 
 namespace MetalMintSolid.Pcx;
@@ -11,6 +10,7 @@ public static class PcxCommand
 {
     private static readonly JsonSerializerOptions _serializerOptions = new()
     {
+        PropertyNameCaseInsensitive = true,
         Converters = 
         {
             new ColorJsonConverter()
@@ -67,14 +67,14 @@ public static class PcxCommand
         if (!source.Exists) throw new FileNotFoundException("Specified bitmap was not found", source.FullName);
         target ??= new FileInfo($"{Path.GetFileNameWithoutExtension(source.FullName)}.pcx");
 
-        List<Color>? colors = null;
+        PaletteData? colors = null;
         if (palette != null)
         {
             if (!palette.Exists) throw new FileNotFoundException("Specified palette file was not found", palette.FullName);
             using var paletteFile = palette.OpenRead();
 
-            colors = JsonSerializer.Deserialize<List<Color>>(paletteFile, _serializerOptions) ?? throw new NotSupportedException("Failed to deserialize palette contents");
-            if (colors.Count > 16) throw new NotSupportedException($"Palette contains {colors.Count} colors, only up to 16 are supported");
+            colors = JsonSerializer.Deserialize<PaletteData>(paletteFile, _serializerOptions) ?? throw new NotSupportedException("Failed to deserialize palette contents");
+            if (colors.Palette.Count > 16) throw new NotSupportedException($"Palette contains {colors.Palette.Count} colors, only up to 16 are supported");
         }
 
         var bitmap = new Bitmap(source.FullName);
@@ -96,11 +96,19 @@ public static class PcxCommand
             // Just to be sure
             pcx.Header.Padding = metaPcx.Header.Padding;
             pcx.Header.Reserved = metaPcx.Header.Reserved;
+
+            if (pcx.Header.WindowMax != metaPcx.Header.WindowMax) Console.WriteLine($"Texture sizes differ ('{pcx.Header.WindowMax}' vs '{metaPcx.Header.WindowMax}'), this will most likely not work!");
         }
         else
         {
             Console.WriteLine("Creating basic PCX file with no MGS specific metadata");
             Console.WriteLine("Specify a --metadata original pcx file for texture swapping");
+        }
+
+        if (colors != null)
+        {
+            pcx.Header.Cx = colors.Cx;
+            pcx.Header.Cy = colors.Cy;
         }
 
         using var file = target.Open(FileMode.Create);
@@ -144,25 +152,54 @@ public static class PcxCommand
         if (!Path.Exists(source)) throw new DirectoryNotFoundException("Specified source was not found");
 
         var texturesFiles = Directory.Exists(source) ? new DirectoryInfo(source).GetFiles() : [ new FileInfo(source) ];
-        var textures = texturesFiles.Select(file =>
+        IEnumerable<(string, PcxHeader?)> textures = texturesFiles.Select(file =>
         {
+            var name = Path.GetFileNameWithoutExtension(file.FullName);
+            PcxHeader? header = null;
             try
             {
                 using var stream = file.OpenRead();
                 using var reader = new BinaryReader(stream);
-                var header = reader.ReadPcxImage().Header;
-
-                return (name: Path.GetFileNameWithoutExtension(file.FullName), header, w: header.WindowMax.X + 1, h: header.WindowMax.Y + 1);
+                header = reader.ReadPcxImage().Header;
             }
-            catch
-            {
-                return (name: Path.GetFileNameWithoutExtension(file.FullName), header: null, w: -1, h: -1);
-            }
-        }).ToList();
+            catch { }
 
-        if (verbose == false) Console.WriteLine("Name (hash) width x height @ pX x pY cX x cY");
+            return (name, header);
+        });
+        if (verbose == false) Console.WriteLine("Name (hash) width x height @ pX x pY cX x cY (n colors)");
 
-        foreach (var (name, header, w, h) in textures)
+        var names = new string[] {
+            "sna_arm1",
+            "sna_arm2",
+            "sna_boot",
+            "sna_chest1",
+            "sna_chest2",
+            "sna_chest3",
+            "sna_chest4",
+            "sna_collar1",
+            "sna_collar2",
+            "sna_ear1",
+            "sna_ear2",
+            "sna_face",
+            "sna_face2",
+            "sna_face3",
+            "sna_fin",
+            "sna_fin2",
+            "sna_fin3",
+            "sna_hand",
+            "sna_hand2",
+            "sna_hed",
+            "sna_hip1",
+            "sna_hip2",
+            "sna_leg1",
+            "sna_leg2",
+            "sna_leg3",
+            "sna_leg4",
+            "sna_neck",
+            "sna_neck2"
+        };
+
+        foreach (var (name, header) in textures)
         {
             // Probably not a PCX image 
             if (header == null) continue;
@@ -171,7 +208,7 @@ public static class PcxCommand
             {
                 Console.WriteLine($"{name}:");
                 Console.WriteLine($"  Hash: {StringExtensions.GV_StrCode_80016CCC(name)}");
-                Console.WriteLine($"  Size: {w}x{h}");
+                Console.WriteLine($"  Size: {header.WindowMax.X + 1}x{header.WindowMax.Y + 1}");
                 Console.WriteLine($"  VRAM Position: {header.Px}x{header.Py}");
                 Console.WriteLine($"  CLUT Position: {header.Cx}x{header.Cy}");
                 Console.WriteLine($"  Flags: {header.Flags}");
@@ -189,7 +226,12 @@ public static class PcxCommand
             }
             else
             {
-                Console.WriteLine($"{name} ({StringExtensions.GV_StrCode_80016CCC(name)}): {w}x{h} @ {header.Px}x{header.Py} {header.Cx}x{header.Cy}");
+                if (ushort.TryParse(name, out var hash))
+                {
+                    var readableName = names.FirstOrDefault(n => StringExtensions.GV_StrCode_80016CCC(n) == hash);
+                    Console.WriteLine($"{readableName} ({name}): {header.WindowMax.X + 1}x{header.WindowMax.Y + 1} @ {header.Px}x{header.Py} {header.Cx}x{header.Cy} ({header.NColors} colors)");
+                }
+                else Console.WriteLine($"{name} ({StringExtensions.GV_StrCode_80016CCC(name)}): {header.WindowMax.X + 1}x{header.WindowMax.Y + 1} @ {header.Px}x{header.Py} {header.Cx}x{header.Cy} ({header.NColors} colors)");
             }
         }
     }

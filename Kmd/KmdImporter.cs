@@ -1,11 +1,6 @@
-﻿using MetalMintSolid.Extensions;
-using MetalMintSolid.Kmd.Builder;
-using MetalMintSolid.Util;
+﻿using MetalMintSolid.Kmd.Builder;
 using SharpGLTF.Geometry;
 using SharpGLTF.Schema2;
-using System.ComponentModel;
-using System.Diagnostics;
-using System.Numerics;
 
 namespace MetalMintSolid.Kmd;
 
@@ -78,7 +73,7 @@ public static class KmdImporter
                 BoundingBoxStart = new(int.MaxValue, int.MaxValue, int.MaxValue),
                 Padding = o.Padding,
                 ParentBoneId = o.ParentBoneId,
-                Unknown = o.Unknown,
+                Extend = o.Extend,
                 NonPairingVertexIndicies = [],
                 VertexCoordsTable = [],
                 VertexOrderTable = [],
@@ -163,7 +158,7 @@ public static class KmdImporter
         // We went over the limit, split into new bone
         while (quads.Count > 0 || tris.Count > 0)
         {
-            Console.WriteLine($"Bone '{bone}', has {quads.Count} remaining quads and {triangles.Count} remaining triangles, splitting into multiple objects");
+            Console.WriteLine($"Bone '{bone}', has {quads.Count} remaining quads and {triangles.Count} remaining triangles, splitting into multiple objects, this will probably break animations");
 
             newModel.Header.ObjectCount++;
             newModel.Header.BoneCount++;

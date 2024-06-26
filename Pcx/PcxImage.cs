@@ -45,7 +45,7 @@ public class PcxImage
         return decoded;
     }
 
-    public static PcxImage FromBitmap(Bitmap bitmap, List<Color>? palette = null)
+    public static PcxImage FromBitmap(Bitmap bitmap, PaletteData? palette = null)
     {
         var w = bitmap.Width;
         var h = bitmap.Height;
@@ -76,35 +76,26 @@ public class PcxImage
 
         if (palette == null)
         {
-            palette = [];
+            palette = new()
+            {
+                Palette = []
+            };
 
             for (int x = 0; x < w; x++)
             {
                 for (int y = 0; y < h; y++)
                 {
                     var color = bitmap.GetPixel(x, y);
-                    if (color.A != 255) color = Color.Black;
+                    if (color.A != 255) color = Color.FromArgb(0, 0, 0);
 
-                    // Alternative transparent
-                    // TODO: HACK: Just temp
-                    if (color.R == 255 && color.G == 0 && color.B == 255) color = Color.Black;
-
-                    palette.Add(color);
+                    palette.Palette.Add(color);
                 }
             }
         }
-        else
-        {
-            if (palette.Contains(Color.FromArgb(255, 0, 255)))
-            {
-                palette.Remove(Color.FromArgb(255, 0, 255));
-                palette.Add(Color.FromArgb(0, 0, 0));
-            }
-        }
 
-        palette = palette.Distinct().ToList();
-        if (palette.Count > 16) throw new NotSupportedException("EGA palettes are limited to 16 colors");
-        header.Palette = [.. palette];
+        palette.Palette = palette.Palette.Distinct().ToList();
+        if (palette.Palette.Count > 16) throw new NotSupportedException("EGA palettes are limited to 16 colors");
+        header.Palette = [.. palette.Palette];
 
         var indexedImage = new byte[w, h];
         for (int x = 0; x < w; x++)
@@ -113,10 +104,12 @@ public class PcxImage
             {
                 // TODO: Slow
                 var pixel = bitmap.GetPixel(x, y);
-                if (pixel.A != 255) pixel = Color.Black;
-                if (pixel.R == 255 && pixel.G == 0 && pixel.B == 255) pixel = Color.Black;
+                if (pixel.A != 255) pixel = Color.FromArgb(0, 0, 0);
 
-                indexedImage[x, y] = (byte)Array.IndexOf(header.Palette, pixel);
+                var colorIndex = Array.IndexOf(header.Palette, pixel);
+                //if (colorIndex == -1) Console.WriteLine($"Cannot find color '{pixel}'");
+
+                indexedImage[x, y] = (byte)colorIndex;
             }
         }
 
@@ -228,7 +221,7 @@ public static class BinaryReaderPcxImageExtensions
             }
         }
 
-        if (reader.BaseStream.Length != reader.BaseStream.Position) throw new InvalidDataException("Unexpected data after image payload");
+        if (reader.BaseStream.Length != reader.BaseStream.Position) Console.WriteLine("Unexpected data after image payload");
         return dataBuffer.ToArray();
     }
 }

@@ -10,22 +10,40 @@ namespace MetalMintSolid.Kmd;
 
 public static class KmdExporter
 {
-    public static ModelRoot ToGltf(this KmdModel model, string texturePath)
+    /// <summary>
+    /// Converts a KMD model to a GLTF root object and optionally loads converted textures if <paramref name="texturePath"/> is not <see langword="null"/> or empty
+    /// </summary>
+    /// <param name="model">Converted model</param>
+    /// <param name="texturePath">Path to textures or null</param>
+    /// <returns></returns>
+    public static ModelRoot ToGltf(this KmdModel model, string texturePath = "")
     {
         var hashFiles = model.Objects
             .SelectMany(o => o.PCXHashedFileNames)
             .ToHashSet();
 
-        var materials = Directory.GetFiles(texturePath)
-            .Select(p => Path.GetFileNameWithoutExtension(p))
-            .Distinct()
-            .ToDictionary(StringExtensions.GV_StrCode_80016CCC)
-            .Where(p => hashFiles.Contains(p.Key))
-            .Select(p => (p.Key, new MaterialBuilder(p.Key.ToString())
-                    .WithChannelImage("BaseColor", $"{texturePath}/{p.Value}.png")
-                    .WithUnlitShader())
-            ).ToDictionary();
+        Dictionary<ushort, MaterialBuilder> materials;
 
+        if (string.IsNullOrEmpty(texturePath))
+        {
+            materials = hashFiles
+                .Select(p => (p, new MaterialBuilder(p.ToString()).WithUnlitShader()))
+                .ToDictionary();
+        }
+        else
+        {
+            materials = Directory.GetFiles(texturePath)
+                .Select(p => Path.GetFileNameWithoutExtension(p))
+                .Distinct()
+                .ToDictionary(StringExtensions.GV_StrCode_80016CCC)
+                .Where(p => hashFiles.Contains(p.Key))
+                .Select(p => (p.Key, new MaterialBuilder(p.Key.ToString())
+                        .WithChannelImage("BaseColor", $"{texturePath}/{p.Value}.png")
+                        .WithUnlitShader())
+                ).ToDictionary();
+        }
+
+        // TODO: Why is this OrderBy, did I want a GroupBy here?
         var objParents = model.Objects.OrderBy(o => o.ParentBoneId).ToList();
         var nodes = new Dictionary<KmdObject, NodeBuilder>();
         var sceneBuilder = new SceneBuilder("default");
@@ -60,7 +78,7 @@ public static class KmdExporter
         }
 
 
-        if (model.Objects.Any(o => o.ParentBoneId != -1))
+        if (false && model.Objects.Any(o => o.ParentBoneId != -1))
         {
             // Probably boned
             var links = nodes.Values.ToArray();
@@ -111,13 +129,6 @@ public static class KmdExporter
             var uv2 = new VertexTexture1(new Vector2(model.UvTable[x].X / 256f, model.UvTable[x++].Y / 256f));
             var uv3 = new VertexTexture1(new Vector2(model.UvTable[x].X / 256f, model.UvTable[x++].Y / 256f));
             var uv4 = new VertexTexture1(new Vector2(model.UvTable[x].X / 256f, model.UvTable[x++].Y / 256f));
-
-            /*
-            var skin1 = new VertexJoints4((boneId, v1.Z));
-            var skin2 = new VertexJoints4((boneId, v2.Z));
-            var skin3 = new VertexJoints4((boneId, v3.Z));
-            var skin4 = new VertexJoints4((boneId, v4.Z));
-            */
 
             var skin1 = new VertexJoints4((boneId, 1));
             var skin2 = new VertexJoints4((boneId, 1));

@@ -1,0 +1,42 @@
+﻿using MetalMintSolid.Util;
+
+namespace MetalMintSolid.Stg;
+
+public class StgConfig
+{
+    public ushort Hash { get; set; }
+    public byte Mode { get; set; }
+    public byte Extension { get; set; }
+    public string ExtensionName => ExtensionNames.Extensions[Extension];
+    public int Size { get; set; }
+    public int SizeSectors
+    {
+        get => (int)Math.Ceiling(Size / 2048f);
+        set => Size = value * 2048;
+    }
+}
+
+public static class BinaryReaderStgConfigExtensions
+{
+    public static StgConfig ReadStgConfig(this BinaryReader reader)
+    {
+        return new StgConfig
+        {
+            Hash = reader.ReadUInt16(),
+            Mode = reader.ReadByte(),
+            Extension = reader.ReadByte(),
+            Size = reader.ReadInt32(),
+        };
+    }
+}
+
+public static class BinaryWriterStgConfigExtensions
+{
+    public static void Write(this BinaryWriter writer, StgConfig header)
+    {
+        writer.Write(header.Hash);
+        writer.Write(header.Mode);
+        writer.Write(header.Extension);
+        writer.Write(header.Size);
+    }
+}

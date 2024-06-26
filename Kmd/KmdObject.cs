@@ -1,6 +1,4 @@
-﻿using System.Text.Json.Serialization;
-
-namespace MetalMintSolid.Kmd;
+﻿namespace MetalMintSolid.Kmd;
 
 public class KmdObject
 {
@@ -13,7 +11,7 @@ public class KmdObject
     public required Vector3Int32 BonePosition { get; set; }
     public int ParentBoneId { get; set; }
 
-    public uint Unknown { get; set; }
+    public uint Extend { get; set; }
 
     public required string Name { get; set; }
 
@@ -88,7 +86,7 @@ public static class BinaryReaderKmdObjectExtensions
             BoundingBoxEnd = reader.ReadVector3Int32(),
             BonePosition = reader.ReadVector3Int32(),
             ParentBoneId = reader.ReadInt32(),
-            Unknown = reader.ReadUInt32(),
+            Extend = reader.ReadUInt32(),
             VertexCount = reader.ReadUInt32(),
             VertexCoordOffset = reader.ReadUInt32(),
             VertexOrderOffset = reader.ReadUInt32(),
@@ -161,7 +159,7 @@ public static class BinaryWriterKmdObjectExtensions
         writer.Write(kmd.BoundingBoxEnd);
         writer.Write(kmd.BonePosition);
         writer.Write(kmd.ParentBoneId);
-        writer.Write(kmd.Unknown);
+        writer.Write(kmd.Extend);
         writer.Write(kmd.VertexCount);
         writer.Write(kmd.VertexCoordOffset);
         writer.Write(kmd.VertexOrderOffset);

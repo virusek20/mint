@@ -288,21 +288,23 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
 
     public KmdObject NewBone(int parentBoneId)
     {
-        var copy = obj.CreateDeepCopy();
-
-        copy.VertexCoordsTable.Clear();
-        copy.VertexOrderTable.Clear();
-
-        copy.NormalVertexCoordsTable.Clear();
-        copy.NormalVertexOrderTable.Clear();
-
-        copy.UvTable.Clear();
-        copy.PCXHashedFileNames.Clear();
-
-        copy.ParentBoneId = parentBoneId;
-        copy.BonePosition = new(0, 0, 0);
-
-        return copy;
+        return new KmdObject
+        {
+            Name = $"{obj.Name ?? ""}_split",
+            BitFlags = obj.BitFlags,
+            BoundingBoxStart = new(0, 0, 0),
+            BoundingBoxEnd = new(0, 0, 0),
+            BonePosition = new(0, 0, 0),
+            ParentBoneId = parentBoneId,
+            Extend = obj.Extend,
+            NonPairingVertexIndicies = [],
+            VertexCoordsTable = [],
+            VertexOrderTable = [],
+            NormalVertexCoordsTable = [],
+            NormalVertexOrderTable = [],
+            UvTable = [],
+            PCXHashedFileNames = []
+        }; ;
     }
 
     private void RecalculateBounds(List<Vector4Int16> vertices)
