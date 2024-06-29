@@ -61,7 +61,7 @@ public static class KmdCommand
         var kmdSource = reader2.ReadKmdModel();
 
         var kmd = KmdImporter.FromGltf(gltf, kmdSource);
-        using var kmdFile = target.OpenWrite();
+        using var kmdFile = target.Create();
         using var writer = new BinaryWriter(kmdFile);
         writer.Write(kmd);
     }
