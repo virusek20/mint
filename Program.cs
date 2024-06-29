@@ -5,6 +5,7 @@ using MetalMintSolid.Kmd;
 using MetalMintSolid.Pcx;
 using MetalMintSolid.PsxHelper;
 using MetalMintSolid.Stg;
+using MetalMintSolid.Vox;
 using System.CommandLine;
 using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
@@ -17,6 +18,7 @@ rootCommand.AddDirCommand();
 rootCommand.AddHashCommand();
 rootCommand.AddStgCommand();
 rootCommand.AddPsxHelpers();
+rootCommand.AddVox();
 
 var parser = new CommandLineBuilder(rootCommand)
     .UseVersionOption()
