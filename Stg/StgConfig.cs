@@ -28,6 +28,21 @@ public static class BinaryReaderStgConfigExtensions
             Size = reader.ReadInt32(),
         };
     }
+
+    public static List<StgConfig> ReadStgConfigList(this BinaryReader reader)
+    {
+        var configs = new List<StgConfig>();
+        while (true)
+        {
+            var conf = reader.ReadStgConfig();
+            //if (conf.Mode == 'c') continue; // What are these?
+            if (conf.Mode == 0) return configs;
+
+            configs.Add(conf);
+        }
+
+        throw new Exception("Failed to load archive");
+    }
 }
 
 public static class BinaryWriterStgConfigExtensions
