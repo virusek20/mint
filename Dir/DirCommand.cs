@@ -55,6 +55,7 @@ public static class DirCommand
             Console.WriteLine($"{entry.Name} @ 0x{entry.Offset:X4}");
         }
 
+        /*
         // TEST ONLY
         var expanded = new DirArchive
         {
@@ -77,8 +78,7 @@ public static class DirCommand
             if (i == expanded.Files.Count - 1) len = (int)reader.BaseStream.Length - archive.Files[i].Offset;
             else len = archive.Files[i + 1].Offset - archive.Files[i].Offset;
 
-            string output = new string(entry.Name.Where(c => !char.IsControl(c)).ToArray());
-            using var w2 = new BinaryWriter(File.OpenWrite($"stage/{output}.stg"));
+            using var w2 = new BinaryWriter(File.OpenWrite($"stage/{entry.SanitizedName}.stg"));
 
             var data = reader.ReadBytes(len);
             w.Write(data);
@@ -93,6 +93,7 @@ public static class DirCommand
         var header = reader.ReadStgHeader();
 
         var configs = ReadConfigs(reader, archive.Files[8].Offset);
+        */
     }
 
     private static void PackHandler(FileInfo? file, DirectoryInfo input, FileInfo? order)
@@ -102,7 +103,31 @@ public static class DirCommand
 
     private static void ExtractHandler(FileInfo file, DirectoryInfo? target)
     {
-        throw new NotImplementedException();
+        if (!file.Exists) throw new FileNotFoundException("Specified archive cannot be found", file.FullName);
+
+        if (target == null) target = Directory.CreateDirectory(Path.GetFileNameWithoutExtension(file.Name));
+        else if (!target.Exists) target = Directory.CreateDirectory(Path.GetFileNameWithoutExtension(target.FullName));
+
+        using var fileStream = File.Open(file.FullName, FileMode.Open);
+        using var reader = new BinaryReader(fileStream);
+
+        var archive = reader.ReadDirArchive();
+        Console.WriteLine("DIR archives do not contain file sizes, extracted files might have extra padding");
+
+        for (int i = 0; i < archive.Files.Count; i++)
+        {
+            DirFile? entry = archive.Files[i];
+
+            int len = 0;
+            if (i == archive.Files.Count - 1) len = (int)reader.BaseStream.Length - entry.Offset;
+            else len = archive.Files[i + 1].Offset - entry.Offset;
+
+            var entryPath = Path.Combine(target.FullName, $"{entry.SanitizedName}.stg");
+            File.WriteAllBytes(entryPath, reader.ReadBytes(len));
+        }
+
+        var orderPath = Path.Combine(target.FullName, "order.txt");
+        File.WriteAllLines(orderPath, archive.Files.Select(f => f.Name));
     }
 
     private static int sector = 1;

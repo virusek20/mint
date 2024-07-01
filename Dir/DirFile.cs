@@ -7,9 +7,14 @@ public class DirFile
     public required string Name { get; set; }
     public required int Offset { get; set; }
 
+    /// <summary>
+    /// Gets the entry name without any control characters
+    /// </summary>
+    public string SanitizedName => new(Name.Where(c => !char.IsControl(c)).ToArray());
+
     public override string ToString()
     {
-        return $"{Name} @ 0x{Offset:X}";
+        return $"{SanitizedName} @ 0x{Offset:X}";
     }
 }
 
