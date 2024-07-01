@@ -21,13 +21,14 @@ public static class DirCommand
         extractCommand.SetHandler(ExtractHandler, extractFileArgument, extractTargetArgument);
 
         var packCommand = new Command("pack", "Creates a new .dir archive");
-        var packFileArgument = new Argument<FileInfo?>("file", "Output filename");
         var packTargetArgument = new Argument<DirectoryInfo>("input", "Archive source directory");
-        var packOrderOption = new Option<FileInfo?>("--order", () => new FileInfo("order.txt"), "File order file, orders the archive in a specific way (useful for modding)");
+        var packFileArgument = new Argument<FileInfo?>("file", "Output filename")
+        {
+            Arity = ArgumentArity.ZeroOrOne
+        };
         packCommand.AddArgument(packTargetArgument);
         packCommand.AddArgument(packFileArgument);
-        packCommand.AddOption(packOrderOption);
-        packCommand.SetHandler(PackHandler, packFileArgument, packTargetArgument, packOrderOption);
+        packCommand.SetHandler(PackHandler, packTargetArgument, packFileArgument);
 
         var listCommand = new Command("list", "List contents of a .dir archive");
         var listFileArgument = new Argument<FileInfo>("file", "The .dir archive to list contents of");
@@ -54,51 +55,40 @@ public static class DirCommand
         {
             Console.WriteLine($"{entry.Name} @ 0x{entry.Offset:X4}");
         }
-
-        /*
-        // TEST ONLY
-        var expanded = new DirArchive
-        {
-            Files = archive.Files.Select(f => new DirFile { Name = f.Name, Offset = f.Offset }).ToList(),
-        };
-        foreach (var entry in expanded.Files.Skip(1)) entry.Offset += 2048 * 128; // Mint do be sizeable
-
-        var w = new BinaryWriter(File.OpenWrite("STAGE.DIR"));
-        w.Write(expanded);
-
-        for (int i = 0; i < expanded.Files.Count; i++)
-        {
-            DirFile? entry = expanded.Files[i];
-            DirFile? entryOriginal = archive.Files[i];
-
-            w.BaseStream.Position = entry.Offset;
-            reader.BaseStream.Position = entryOriginal.Offset;
-
-            int len = 0;
-            if (i == expanded.Files.Count - 1) len = (int)reader.BaseStream.Length - archive.Files[i].Offset;
-            else len = archive.Files[i + 1].Offset - archive.Files[i].Offset;
-
-            using var w2 = new BinaryWriter(File.OpenWrite($"stage/{entry.SanitizedName}.stg"));
-
-            var data = reader.ReadBytes(len);
-            w.Write(data);
-            w2.Write(data);
-        }
-
-        w.Close();
-        
-        // TEST ONLY
-
-        reader.BaseStream.Position = archive.Files[8].Offset;
-        var header = reader.ReadStgHeader();
-
-        var configs = ReadConfigs(reader, archive.Files[8].Offset);
-        */
     }
 
-    private static void PackHandler(FileInfo? file, DirectoryInfo input, FileInfo? order)
+    private static void PackHandler(DirectoryInfo input, FileInfo? target)
     {
-        throw new NotImplementedException();
+        if (!input.Exists) throw new FileNotFoundException("Archive source does not exist", input.FullName);
+        target ??= new FileInfo($"{Path.GetFileNameWithoutExtension(input.FullName)}.dir");
+
+        var offset = 2048;
+        var files = input.GetFiles().Select(file =>
+        {
+            var dir = new DirFile
+            {
+                Name = Path.GetFileNameWithoutExtension(file.Name),
+                Offset = offset,
+            };
+
+            offset += (int)(Math.Ceiling(file.Length / 2048f) * 2048);
+
+            return (DirEntry: dir, Filename: file.FullName);
+        }).ToList();
+
+        var archive = new DirArchive
+        {
+            Files = files.Select(f => f.DirEntry).ToList()
+        };
+
+        using var writer = new BinaryWriter(target.Create());
+        writer.Write(archive);
+
+        foreach (var file in files)
+        {
+            writer.BaseStream.Position = file.DirEntry.Offset;
+            writer.Write(File.ReadAllBytes(file.Filename));
+        }
     }
 
     private static void ExtractHandler(FileInfo file, DirectoryInfo? target)
@@ -131,66 +121,5 @@ public static class DirCommand
 
         var orderPath = Path.Combine(target.FullName, "order.txt");
         File.WriteAllLines(orderPath, archive.Files.Select(f => f.Name));
-    }
-
-    private static int sector = 1;
-
-    private static List<StgConfig> ReadConfigs(BinaryReader reader, int offset)
-    {
-        var configs = new List<StgConfig>();
-        while (true)
-        {
-            var conf = reader.ReadStgConfig();
-            switch (conf.Mode)
-            {
-                case 99:
-                    //Loader_helper_8002336C(reader, conf);
-                    break;
-                case 115: // s = skip?
-                    break;
-                case 0:
-                    return configs;
-                default:
-                    Loader_helper2_80023460(reader, conf, offset);
-                    break;
-            }
-            if (conf.Mode == 0) break;
-            else configs.Add(conf);
-
-            if (conf.Extension == 0xFF) // DAR
-            {
-                if (conf.Mode == 0x6E) Console.WriteLine("Texture pack");
-                else if (conf.Mode == 0x63) Console.WriteLine("Model pack");
-            }
-        }
-
-        throw new Exception("Failed to load archive");
-    }
-
-    private static void Loader_helper_8002336C(BinaryReader reader, StgConfig conf)
-    {
-        Console.WriteLine("subarchive?");
-    }
-
-    private static void Loader_helper2_80023460(BinaryReader reader, StgConfig conf, int offset)
-    {
-        var isResidentCache = conf.Mode == 114;
-        Console.WriteLine("rando file");
-
-        var origPos = reader.BaseStream.Position;
-
-        reader.BaseStream.Position = offset + sector * 2048;
-        //var c2f = ReadConfigs(reader);
-        var data = reader.ReadBytes(conf.Size);
-        var r2 = new BinaryReader(new MemoryStream(data));
-
-        var file = new List<DarFile>();
-        while (r2.BaseStream.Position != r2.BaseStream.Length) 
-        {
-            file.Add(r2.ReadDarFile());
-        }
-
-        reader.BaseStream.Position = origPos;
-        sector += (int)Math.Ceiling(conf.Size / 2048f);
     }
 }
