@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+﻿using SkiaSharp;
 
 namespace MetalMintSolid.Pcx;
 
@@ -47,7 +47,7 @@ public class PcxHeader
     /// <summary>
     /// Palette for 16 colors or less, in three-byte RGB entries. Padded with 0x00 to 48 bytes in total length.
     /// </summary>
-    public required Color[] Palette { get; set; } = new Color[16];
+    public required SKColor[] Palette { get; set; } = new SKColor[16];
 
     /// <summary>
     /// Should be set to 0, but can sometimes contain junk. 
@@ -156,14 +156,14 @@ public static class BinaryReaderPcxHeaderExtensions
         return header;
     }
 
-    private static Color[] ReadPcxPalette(this BinaryReader reader)
+    private static SKColor[] ReadPcxPalette(this BinaryReader reader)
     {
         // TODO: This should respect NColors
-        var palette = new Color[16];
+        var palette = new SKColor[16];
 
         for (int i = 0; i < 16; i++)
         {
-            palette[i] = Color.FromArgb(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
+            palette[i] = new SKColor(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
         }
 
         return palette;
@@ -198,7 +198,7 @@ public static class BinaryWriterPcxHeaderExtensions
         writer.Write(header.Padding);
     }
 
-    private static void Write(this BinaryWriter writer, Color[] palettte)
+    private static void Write(this BinaryWriter writer, SKColor[] palettte)
     {
         // TODO: This should respect NColors
         if (palettte.Length > 16) throw new NotSupportedException("Palette size cannot be larger than 16 for EGA");
@@ -206,9 +206,9 @@ public static class BinaryWriterPcxHeaderExtensions
         for (int i = 0; i < 16; i++)
         {
             var color = palettte[i % palettte.Length];
-            writer.Write(color.R);
-            writer.Write(color.G);
-            writer.Write(color.B);
+            writer.Write(color.Red);
+            writer.Write(color.Green);
+            writer.Write(color.Blue);
         }
     }
 }

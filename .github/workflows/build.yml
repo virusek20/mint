@@ -22,10 +22,20 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Build
+      - name: Build Windows
         run: dotnet publish --os win
 
-      - name: Upload
+      - name: Build Linux
+        run: dotnet publish --os linux
+
+      - name: Upload Windows
         uses: actions/upload-artifact@v4
         with:
-          file: ./bin/Release/net8.0-windows/win-x64/publish/MetalMintSolid.exe
+          name: win64
+          path: ./bin/Release/net8.0/win-x64/publish
+
+      - name: Upload Linux
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: ./bin/Release/net8.0/linux-x64/publish

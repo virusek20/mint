@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+﻿using SkiaSharp;
 
 namespace MetalMintSolid.Pcx;
 
@@ -7,7 +7,7 @@ public class PcxImage
     public required PcxHeader Header { get; set; }
     public required byte[] ImageData { get; set; }
 
-    public Bitmap AsBitmap()
+    public SKBitmap AsBitmap()
     {
         var indexedImage = new int[(Header.WindowMax.X + 1) * (Header.WindowMax.Y + 1)];
         var lineSize = Header.BytesPerPlaneLine * Header.ColorPlanes;
@@ -33,7 +33,7 @@ public class PcxImage
             }
         }
 
-        var decoded = new Bitmap(Header.WindowMax.X + 1, Header.WindowMax.Y + 1);
+        var decoded = new SKBitmap(Header.WindowMax.X + 1, Header.WindowMax.Y + 1);
         for (int y = 0; y < Header.WindowMax.Y + 1; y++)
         {
             for (int x = 0; x < Header.WindowMax.X + 1; x++)
@@ -45,7 +45,7 @@ public class PcxImage
         return decoded;
     }
 
-    public static PcxImage FromBitmap(Bitmap bitmap, PaletteData? palette = null)
+    public static PcxImage FromBitmap(SKBitmap bitmap, PaletteData? palette = null)
     {
         var w = bitmap.Width;
         var h = bitmap.Height;
@@ -64,7 +64,7 @@ public class PcxImage
             },
             VerticalDPI = 1600,
             HorizontalDPI = 1200,
-            Palette = new Color[16],
+            Palette = new SKColor[16],
             Reserved = 0,
             ColorPlanes = 4,
             BytesPerPlaneLine = Convert.ToUInt16(Math.Ceiling(w / 8.0)),
@@ -86,7 +86,7 @@ public class PcxImage
                 for (int y = 0; y < h; y++)
                 {
                     var color = bitmap.GetPixel(x, y);
-                    if (color.A != 255) color = Color.FromArgb(0, 0, 0);
+                    if (color.Alpha != 255) color = new SKColor(0, 0, 0);
 
                     palette.Palette.Add(color);
                 }
@@ -104,7 +104,7 @@ public class PcxImage
             {
                 // TODO: Slow
                 var pixel = bitmap.GetPixel(x, y);
-                if (pixel.A != 255) pixel = Color.FromArgb(0, 0, 0);
+                if (pixel.Alpha != 255) pixel = new SKColor(0, 0, 0);
 
                 var colorIndex = Array.IndexOf(header.Palette, pixel);
                 //if (colorIndex == -1) Console.WriteLine($"Cannot find color '{pixel}'");

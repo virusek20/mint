@@ -1,22 +1,12 @@
 ﻿using MetalMintSolid.Extensions;
-using MetalMintSolid.Util;
+using SkiaSharp;
 using System.CommandLine;
-using System.Drawing;
 using System.Text.Json;
 
 namespace MetalMintSolid.Pcx;
 
 public static class PcxCommand
 {
-    private static readonly JsonSerializerOptions _serializerOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters = 
-        {
-            new ColorJsonConverter()
-        }
-    };
-
     public static Command AddPcxCommand(this Command command)
     {
         var pcxCommand = new Command("pcx", "Manipulate PCX images");
@@ -73,11 +63,11 @@ public static class PcxCommand
             if (!palette.Exists) throw new FileNotFoundException("Specified palette file was not found", palette.FullName);
             using var paletteFile = palette.OpenRead();
 
-            colors = JsonSerializer.Deserialize<PaletteData>(paletteFile, _serializerOptions) ?? throw new NotSupportedException("Failed to deserialize palette contents");
+            colors = JsonSerializer.Deserialize(paletteFile, MintJsonSerializerContext.Default.PaletteData) ?? throw new NotSupportedException("Failed to deserialize palette contents");
             if (colors.Palette.Count > 16) throw new NotSupportedException($"Palette contains {colors.Palette.Count} colors, only up to 16 are supported");
         }
 
-        var bitmap = new Bitmap(source.FullName);
+        var bitmap = SKBitmap.Decode(source.FullName);
         var pcx = PcxImage.FromBitmap(bitmap, colors);
 
         if (metadata != null)
@@ -125,7 +115,9 @@ public static class PcxCommand
         using var reader = new BinaryReader(file);
 
         var pcx = reader.ReadPcxImage();
-        pcx.AsBitmap().Save(target.FullName);
+        var bitmap = pcx.AsBitmap();
+        using var targetFile = target.Create();
+        bitmap.Encode(targetFile, SKEncodedImageFormat.Png, 100);
     }
 
     private static void BatchDecodeHandler(DirectoryInfo source, DirectoryInfo target)
@@ -143,7 +135,9 @@ public static class PcxCommand
             using var reader = new BinaryReader(stream);
 
             var pcx = reader.ReadPcxImage();
-            pcx.AsBitmap().Save(outputPath);
+            var bitmap = pcx.AsBitmap();
+            using var targetFile = File.Open(outputPath, FileMode.Create);
+            bitmap.Encode(targetFile, SKEncodedImageFormat.Png, 100);
         }
     }
 
@@ -218,9 +212,9 @@ public static class PcxCommand
                 for (int i = 0; i< header.NColors; i++)
                 {
                     var color = header.Palette[i];
-                    Console.Write($"    #{color.R:X2}{color.G:X2}{color.B:X2} ({color.R}, {color.G}, {color.B})");
+                    Console.Write($"    #{color.Red:X2}{color.Green:X2}{color.Blue:X2} ({color.Red}, {color.Green}, {color.Blue})");
                     
-                    if (color.R == 0 && color.G == 0 && color.B == 0) Console.WriteLine(" | Transparent");
+                    if (color.Red == 0 && color.Green == 0 && color.Blue == 0) Console.WriteLine(" | Transparent");
                     else Console.WriteLine();
                 }
             }
