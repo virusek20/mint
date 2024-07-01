@@ -122,8 +122,11 @@ public static class DirCommand
             if (i == archive.Files.Count - 1) len = (int)reader.BaseStream.Length - entry.Offset;
             else len = archive.Files[i + 1].Offset - entry.Offset;
 
+            var origPosition = reader.BaseStream.Position;
+            reader.BaseStream.Position = entry.Offset;
             var entryPath = Path.Combine(target.FullName, $"{entry.SanitizedName}.stg");
             File.WriteAllBytes(entryPath, reader.ReadBytes(len));
+            reader.BaseStream.Position = origPosition;
         }
 
         var orderPath = Path.Combine(target.FullName, "order.txt");
