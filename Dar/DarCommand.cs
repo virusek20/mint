@@ -110,8 +110,10 @@ public static class DarCommand
         file ??= new FileInfo($"{Path.GetFileNameWithoutExtension(input.FullName)}.dar");
 
         order ??= new FileInfo(Path.Combine(input.FullName, "order.txt"));
-        if (!order.Exists) throw new FileNotFoundException("Failed to find order.txt required for keeping references intact", order.FullName);
-        var fileOrder = File.ReadAllLines(order.FullName);
+        string[]? fileOrder;
+
+        if (!order.Exists) fileOrder = Directory.GetFiles(input.FullName).Select(f => Path.GetFileName(f)).ToArray();
+        else fileOrder = File.ReadAllLines(order.FullName);
 
         using var archiveFile = File.Open(file.FullName, FileMode.Create);
         using var writer = new BinaryWriter(archiveFile);
