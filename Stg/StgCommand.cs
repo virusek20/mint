@@ -17,7 +17,7 @@ public static class StgCommand
         stageExtractCommand.SetHandler(ExtractHandler, stageExtractSourceArgument, stageExtractTargetArgument);
 
         var stagePatchCommand = new Command("patch", "Replaces a DAR file within a stage");
-        var stagePatchDarArgument = new Argument<FileInfo>("dar", "Replacement DAR archive");
+        var stagePatchDarArgument = new Argument<FileInfo>("patch", "Replacement file");
         var stagePatchStageArgument = new Argument<FileInfo>("stage", "Original stage file");
         var stagePatchIndexArgument = new Argument<int>("index", "Replaced archive index");
         var stagePatchOutputArgument = new Argument<FileInfo?>("output", "Patched stage file");
@@ -40,9 +40,56 @@ public static class StgCommand
         return stgCommand;
     }
 
-    private static void PatchHandler(FileInfo dar, FileInfo stage, int index, FileInfo? output)
+    private static void PatchHandler(FileInfo patch, FileInfo stage, int index, FileInfo? output)
     {
-        throw new NotImplementedException();
+        if (!patch.Exists) throw new FileNotFoundException("Specified replacement file not found", patch.FullName);
+        if (!stage.Exists) throw new FileNotFoundException("Specified original stage not found", stage.FullName);
+        output ??= new FileInfo($"{Path.GetFileNameWithoutExtension(stage.FullName)}.stg");
+
+        using var reader = new BinaryReader(stage.OpenRead());
+        var header = reader.ReadStgHeader();
+        var configs = reader.ReadStgConfigList();
+
+        if (index < 0 || index >= configs.Count) throw new ArgumentOutOfRangeException(nameof(index), $"Index is outside of the valid range of this stage file (0..{configs.Count - 1})");
+        if (configs[index].Mode == 'c') throw new NotSupportedException("Cannot replace packed files yet"); // TODO: Add this
+
+        var mod = File.ReadAllBytes(patch.FullName);
+        using var writer = new BinaryWriter(output.Create());
+
+        void Resize(StgConfig config, int newLength)
+        {
+            var oldSizeSectors = config.SizeSectors;
+            var sizeSectors = (int)Math.Ceiling(newLength / 2048f);
+            var sizeDiff = sizeSectors - oldSizeSectors;
+
+            config.Size = newLength;
+            header.Size += (short)sizeDiff;
+        }
+
+        var oldSizeSectors = configs[index].SizeSectors;
+        Resize(configs[index], mod.Length);
+
+        // Header
+        writer.Write(header);
+        foreach (var config in configs) writer.Write(config);
+
+        // Start of file
+        var skippedSectors = configs.Take(index)
+            .Where(c => c.Mode != 'c')
+            .Sum(c => c.SizeSectors);
+        reader.BaseStream.Position = 2048;
+        writer.BaseStream.Position = 2048;
+        writer.Write(reader.ReadBytes(skippedSectors * 2048));
+
+        // Modded data
+        writer.Write(mod);
+        var pad = 2048 - writer.BaseStream.Position % 2048;
+        if (pad == 2048) pad = 0;
+        writer.BaseStream.Position += pad;
+
+        // Rest of file
+        reader.BaseStream.Position = (1 + skippedSectors + oldSizeSectors) * 2048;
+        writer.Write(reader.ReadBytes((int)reader.BaseStream.Length));
     }
 
     private static void ExtractHandler(FileInfo source, DirectoryInfo? target)
