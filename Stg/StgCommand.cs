@@ -55,6 +55,27 @@ public static class StgCommand
         using var reader = new BinaryReader(stageFile);
 
         var header = reader.ReadStgHeader();
+        var configs = reader.ReadStgConfigList();
+
+        reader.BaseStream.Position = 2048;
+        for (int i = 0; i < configs.Count; i++)
+        {
+            StgConfig? config = configs[i];
+            if (config.Mode == 'c') continue; // TODO: Packed cached files
+
+            if (config.Mode == 0xFF)  // TODO: End of packed files
+            {
+                reader.BaseStream.Position += config.SizeSectors * 2048;
+            }
+            else
+            {
+                var filePath = Path.Combine(target.FullName, $"{i}_{config.Hash}.{config.ExtensionName}");
+                File.WriteAllBytes(filePath, reader.ReadBytes(config.Size));
+                var pad = 2048 - reader.BaseStream.Position % 2048;
+                if (pad == 2048) pad = 0;
+                reader.BaseStream.Position += pad;
+            }
+        }
     }
     private static void ListHandler(FileInfo source)
     {
