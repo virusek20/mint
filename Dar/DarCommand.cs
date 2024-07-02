@@ -58,7 +58,7 @@ public static class DarCommand
         if (!file.Exists) throw new FileNotFoundException("Specified archive cannot be found", file.FullName);
 
         if (target == null) target = Directory.CreateDirectory(Path.GetFileNameWithoutExtension(file.Name));
-        else if (!target.Exists) target = Directory.CreateDirectory(Path.GetFileNameWithoutExtension(target.FullName));
+        else if (!target.Exists) target = Directory.CreateDirectory(target.FullName);
 
         using var fileStream = File.Open(file.FullName, FileMode.Open);
         using var reader = new BinaryReader(fileStream);
