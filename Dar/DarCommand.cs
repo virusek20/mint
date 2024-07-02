@@ -27,7 +27,10 @@ public static class DarCommand
         var packCommand = new Command("pack", "Creates a new .dar archive");
         var packFileArgument = new Argument<FileInfo?>("file", "Output filename");
         var packTargetArgument = new Argument<DirectoryInfo>("input", "Archive source directory");
-        var packOrderOption = new Option<FileInfo?>("--order", () => new FileInfo("order.txt"), "File order file, orders the archive in a specific way (useful for modding)");
+        var packOrderOption = new Option<FileInfo?>("--order", "File order file, orders the archive in a specific way (useful for modding)")
+        {
+            Arity = ArgumentArity.ZeroOrOne
+        };
         var packPlatformOption = new Option<PlatformEnum>("--platform", () => PlatformEnum.Pc, "Target platform");
         packCommand.AddArgument(packTargetArgument);
         packCommand.AddArgument(packFileArgument);
