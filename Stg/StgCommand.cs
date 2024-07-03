@@ -1,4 +1,5 @@
 ﻿using System.CommandLine;
+using System.Text.Json;
 
 namespace MetalMintSolid.Stg;
 
@@ -32,12 +33,98 @@ public static class StgCommand
         stageListCommand.AddArgument(stageListStageArgument);
         stageListCommand.SetHandler(ListHandler, stageListStageArgument);
 
+        var stagePackCommand = new Command("pack", "Pack stage file");
+        var stagePackTargetArgument = new Argument<DirectoryInfo>("source", "Source directory");
+        var stagePackSourceArgument = new Argument<FileInfo?>("target", "Output stage file");
+        stagePackCommand.AddArgument(stagePackTargetArgument);
+        stagePackCommand.AddArgument(stagePackSourceArgument);
+        stagePackCommand.SetHandler(PackHandler, stagePackTargetArgument, stagePackSourceArgument);
+
         stgCommand.Add(stageExtractCommand);
         stgCommand.Add(stagePatchCommand);
         stgCommand.Add(stageListCommand);
+        stgCommand.Add(stagePackCommand);
 
         command.Add(stgCommand);
         return stgCommand;
+    }
+
+    private static void PackHandler(DirectoryInfo source, FileInfo? target)
+    {
+        if (!source.Exists) throw new FileNotFoundException("Specified source directory does not exist", source.FullName);
+        target ??= new FileInfo($"{Path.GetFileNameWithoutExtension(source.FullName)}.stg");
+
+        var rebuildJsonPath = Path.Combine(source.FullName, "rebuild.json");
+        if (!File.Exists(rebuildJsonPath)) throw new FileNotFoundException("Could not find rebuild data (rebuild.json)", rebuildJsonPath); ;
+        var rebuildJson = File.ReadAllText(rebuildJsonPath);
+        var rebuildInfo = JsonSerializer.Deserialize(rebuildJson, MintJsonSerializerContext.Default.StgRebuildInfo) ?? throw new InvalidDataException("Failed to deserialize rebuild info");
+
+        using var file = target.Create();
+        using var writer = new BinaryWriter(file);
+
+        var packedSize = 0;
+        var configs = rebuildInfo.Configs.Select(config =>
+        {
+            var fileSize = 0;
+            if (config.Filename != "")
+            {
+                var fileInfo = new FileInfo(Path.Combine(source.FullName, config.Filename));
+                if (fileInfo.Exists == false) throw new FileNotFoundException("Failed to find file referenced in rebuild info", fileInfo.FullName);
+
+                var entrySize = (int)fileInfo.Length;
+                if (config.Mode == 'c')
+                {
+                    fileSize = packedSize;
+                    packedSize += entrySize;
+                }
+                else fileSize = entrySize;
+            }
+
+            if (config.Extension == 0xFF) fileSize = packedSize;
+
+            return new StgConfig
+            {
+                Extension = config.Extension,
+                Hash = config.Hash,
+                Mode = config.Mode,
+                Size = fileSize
+            };
+        }).ToList();
+
+        writer.Write(new StgHeader
+        {
+            Field0 = rebuildInfo.Field0,
+            Field1 = rebuildInfo.Field1,
+            Size = (short)(configs.Where(c => c.Mode != 'c' || c.Extension == 0xFF).Sum(c => c.SizeSectors) + 1) // Extra one for header
+        });
+
+        foreach (var config in configs) writer.Write(config);
+
+        writer.BaseStream.Position = 2048;
+        foreach (var config in rebuildInfo.Configs)
+        {
+            if (config.Extension == 0xFF)
+            {
+                var pad = 2048 - writer.BaseStream.Position % 2048;
+                if (pad == 2048) pad = 0;
+                writer.BaseStream.Position += pad;
+                continue;
+            }
+
+            var data = File.ReadAllBytes(Path.Combine(source.FullName, config.Filename));
+
+            writer.Write(data);
+
+            if (config.Mode != 'c')
+            {
+                var pad = 2048 - writer.BaseStream.Position % 2048;
+                if (pad == 2048) pad = 0;
+                writer.BaseStream.Position += pad;
+            }
+        }
+
+        // Make sure trailing zeroes get written
+        writer.BaseStream.SetLength(writer.BaseStream.Position);
     }
 
     private static void PatchHandler(FileInfo patch, FileInfo stage, int index, FileInfo? output)
@@ -108,13 +195,22 @@ public static class StgCommand
         for (int i = 0; i < configs.Count; i++)
         {
             StgConfig? config = configs[i];
-            if (config.Mode == 'c') continue; // TODO: Packed cached files
 
-            if (config.Mode == 0xFF)  // TODO: End of packed files
+            if (config.Extension == 0xFF) // End of cached section
             {
-                reader.BaseStream.Position += config.SizeSectors * 2048;
+                var pad = 2048 - reader.BaseStream.Position % 2048;
+                if (pad == 2048) pad = 0;
+                reader.BaseStream.Position += pad;
             }
-            else
+            else if (config.Mode == 'c') // Cached entry
+            {
+                var nextConfig = configs[i + 1];
+                var cachedSize = nextConfig.Size - config.Size; // These are technically offsets, not sizes
+
+                var filePath = Path.Combine(target.FullName, $"{i}_{config.Hash}.{config.ExtensionName}");
+                File.WriteAllBytes(filePath, reader.ReadBytes(cachedSize));
+            }
+            else // Regular file
             {
                 var filePath = Path.Combine(target.FullName, $"{i}_{config.Hash}.{config.ExtensionName}");
                 File.WriteAllBytes(filePath, reader.ReadBytes(config.Size));
@@ -123,7 +219,25 @@ public static class StgCommand
                 reader.BaseStream.Position += pad;
             }
         }
+
+        var rebuildInfo = new StgRebuildInfo
+        {
+            Field0 = header.Field0,
+            Field1 = header.Field1,
+            Configs = configs.Select((c, i) => new StgConfigRebuildInfo
+            {
+                Extension = c.Extension,
+                Mode = c.Mode,
+                Hash = c.Hash,
+                Filename = c.Extension == 0xFF ? "" : $"{i}_{c.Hash}.{c.ExtensionName}"
+            }).ToList()
+        };
+
+        var rebuildJson = JsonSerializer.Serialize(rebuildInfo, MintJsonSerializerContext.Default.StgRebuildInfo);
+        var rebuildJsonPath = Path.Combine(target.FullName, "rebuild.json");
+        File.WriteAllText(rebuildJsonPath, rebuildJson);
     }
+
     private static void ListHandler(FileInfo source)
     {
         if (!source.Exists) throw new FileNotFoundException("Specified stage was not found", source.FullName);
@@ -146,7 +260,5 @@ public static class StgCommand
             Console.WriteLine($"    Mode: {entry.Mode} '{(char)entry.Mode}'");
             Console.WriteLine($"    Size: {entry.Size} bytes ({entry.SizeSectors} sectors)");
         }
-
-        Console.WriteLine(configs.Sum(c => c.SizeSectors));
     }
 }

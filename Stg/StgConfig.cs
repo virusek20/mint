@@ -1,4 +1,5 @@
 ﻿using MetalMintSolid.Util;
+using System.Text.Json.Serialization;
 
 namespace MetalMintSolid.Stg;
 
@@ -7,8 +8,10 @@ public class StgConfig
     public ushort Hash { get; set; }
     public byte Mode { get; set; }
     public byte Extension { get; set; }
+    [JsonIgnore]
     public string ExtensionName => ExtensionNames.Extensions[Extension];
     public int Size { get; set; }
+    [JsonIgnore]
     public int SizeSectors
     {
         get => (int)Math.Ceiling(Size / 2048f);
@@ -35,7 +38,6 @@ public static class BinaryReaderStgConfigExtensions
         while (true)
         {
             var conf = reader.ReadStgConfig();
-            //if (conf.Mode == 'c') continue; // What are these?
             if (conf.Mode == 0) return configs;
 
             configs.Add(conf);
