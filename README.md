@@ -1,7 +1,8 @@
 # MGS Import .NET Tool
 MINT is a CLI archive manipulation and model / texture conversion program for Metal Gear Solid.
 
-# ***THE MINT MODEL SWAP MOD IS STILL WORK IN PROGRESS, THIS REPO IS JUST A TOOL FOR MODDING***
+## MINT MOD DOWNLOAD
+If you're looking for the model swap mod itself you can [download it here](https://virusek20.kuub.io/mint/)!
 
 ## Download
 
