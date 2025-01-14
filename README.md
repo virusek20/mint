@@ -6,7 +6,7 @@ If you're looking for the model swap mod itself you can [download it here](https
 
 ## Download
 
-You can download prebuilt binaries from the latest CI run [here](https://github.com/virusek20/mint/actions). Just select the topmost run and download the artifact for your OS near the bottom of the page.
+You can either download the stable release from GitHub [here](https://github.com/virusek20/mint/releases/latest) or download the experimental latest binaries from the latest CI run [here](https://github.com/virusek20/mint/actions). Just select the topmost run and download the artifact for your OS near the bottom of the page.
 
 These binaries do not require the .NET runtime, no external dependencies are needed.
 
