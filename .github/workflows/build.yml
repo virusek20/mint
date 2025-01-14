@@ -20,7 +20,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '9.0.x'
 
       - name: Build Windows
         run: dotnet publish --os win
@@ -32,10 +32,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: win64
-          path: ./bin/Release/net8.0/win-x64/publish
+          path: ./bin/Release/net9.0/win-x64/publish
 
       - name: Upload Linux
         uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: ./bin/Release/net8.0/linux-x64/publish
+          path: ./bin/Release/net9.0/linux-x64/publish
