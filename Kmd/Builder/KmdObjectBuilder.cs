@@ -219,13 +219,17 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
         if (DEBUG_TEXTURE) obj.PCXHashedFileNames.Add(60655);
         else
         {
-            ushort materialNum = 47252;
+            ushort materialNum = 0;
 
             var materialHash = quad.Material.Name;
             if (materialHash.Contains("_replace"))
             {
                 materialHash = materialHash.Replace("_replace", "");
                 materialNum = ushort.Parse(materialHash);
+            }
+            else if (!ushort.TryParse(materialHash, out materialNum))
+            {
+                throw new Exception($"Failed to parse material ID, '{materialHash}' is not a valid ushort");
             }
 
             obj.PCXHashedFileNames.Add(materialNum);
