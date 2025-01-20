@@ -43,54 +43,8 @@ public static class KmdExporter
                 ).ToDictionary();
         }
 
-        // TODO: Why is this OrderBy, did I want a GroupBy here?
-        var objParents = model.Objects.OrderBy(o => o.ParentBoneId).ToList();
-        var nodes = new Dictionary<KmdObject, NodeBuilder>();
-        var sceneBuilder = new SceneBuilder("default");
-
-        for (int i = 0; i < objParents.Count; i++)
-        {
-            KmdObject obj = objParents[i];
-
-            if (obj.ParentBoneId == -1)
-            {
-                var builder = new NodeBuilder($"bone_{i}");
-                sceneBuilder.AddNode(builder);
-                nodes[obj] = builder;
-            }
-            else
-            {
-                var parent = model.Objects[obj.ParentBoneId];
-                var parentNode = nodes[parent];
-                var builder = parentNode.CreateNode($"bone_{i}").WithLocalTranslation(new Vector3(obj.BonePosition.X, obj.BonePosition.Y, obj.BonePosition.Z));
-                nodes[obj] = builder;
-            }
-        }
-
-        var mesh = new MeshBuilder<VertexPositionNormal, VertexTexture1, VertexJoints4>();
-        for (int i = 0; i < model.Objects.Count; i++)
-        {
-            KmdObject obj = objParents[i];
-            var offset = model.GetObjectPosition(obj);
-            var vectorOffset = new Vector3(offset.X, offset.Y, offset.Z);
-
-            obj.ToGltf(materials, mesh, i, vectorOffset);
-        }
-
-
-        if (false && model.Objects.Any(o => o.ParentBoneId != -1))
-        {
-            // Probably boned
-            var links = nodes.Values.ToArray();
-            sceneBuilder.AddSkinnedMesh(mesh, nodes[model.Objects[0]].WorldMatrix, links);
-        }
-        else
-        {
-            // Probably boneless
-            sceneBuilder.AddRigidMesh(mesh, nodes[model.Objects[0]].WorldMatrix);
-        }
-
-        return sceneBuilder.ToGltf2();
+        var isSkinned = model.Objects.Any(o => o.ParentBoneId != -1);
+        return isSkinned ? GenerateSkinned(model, materials) : GenerateRigid(model, materials);
     }
 
     public static void ToGltf(this KmdObject model, Dictionary<ushort, MaterialBuilder> materials, MeshBuilder<VertexPositionNormal, VertexTexture1, VertexJoints4> mesh, int boneId, Vector3 offset)
@@ -100,7 +54,8 @@ public static class KmdExporter
         int x = 0;
         for (int i = 0; i < model.FaceCount; i++)
         {
-            var material = materials[model.PCXHashedFileNames[i]];
+            var materialHash = model.PCXHashedFileNames[i];
+            var material = materialHash == 0 ? new MaterialBuilder() : materials[materialHash];
             var prim = mesh.UsePrimitive(material);
 
             var faceOrder = model.VertexOrderTable[i];
@@ -137,5 +92,78 @@ public static class KmdExporter
 
             prim.AddQuadrangle((pos4, uv4, skin4), (pos3, uv3, skin3), (pos2, uv2, skin2), (pos1, uv1, skin1));
         }
+    }
+
+    private static ModelRoot GenerateSkinned(KmdModel model, Dictionary<ushort, MaterialBuilder> materials)
+    {
+        // TODO: Why is this OrderBy, did I want a GroupBy here?
+        var objParents = model.Objects.OrderBy(o => o.ParentBoneId).ToList();
+        var nodes = new Dictionary<KmdObject, NodeBuilder>();
+        var sceneBuilder = new SceneBuilder("default");
+
+        for (int i = 0; i < objParents.Count; i++)
+        {
+            KmdObject obj = objParents[i];
+
+            if (obj.ParentBoneId == -1)
+            {
+                var builder = new NodeBuilder($"bone_{i}");
+                sceneBuilder.AddNode(builder);
+                nodes[obj] = builder;
+            }
+            else
+            {
+                var parent = model.Objects[obj.ParentBoneId];
+                var parentNode = nodes[parent];
+                var builder = parentNode.CreateNode($"bone_{i}").WithLocalTranslation(new Vector3(obj.BonePosition.X, obj.BonePosition.Y, obj.BonePosition.Z));
+                nodes[obj] = builder;
+            }
+        }
+
+        var mesh = new MeshBuilder<VertexPositionNormal, VertexTexture1, VertexJoints4>();
+        for (int i = 0; i < model.Objects.Count; i++)
+        {
+            KmdObject obj = objParents[i];
+            var offset = model.GetObjectPosition(obj);
+            var vectorOffset = new Vector3(offset.X, offset.Y, offset.Z);
+
+            obj.ToGltf(materials, mesh, i, vectorOffset);
+        }
+        
+        var links = nodes.Values.ToArray();
+        sceneBuilder.AddSkinnedMesh(mesh, nodes[model.Objects[0]].WorldMatrix, links);
+
+        return sceneBuilder.ToGltf2();
+    }
+
+    private static ModelRoot GenerateRigid(KmdModel model, Dictionary<ushort, MaterialBuilder> materials)
+    {
+        var nodes = new Dictionary<KmdObject, NodeBuilder>();
+        var sceneBuilder = new SceneBuilder("default");
+
+        /*
+        for (int i = 0; i < model.Objects.Count; i++)
+        {
+            KmdObject obj = model.Objects[i];
+            var builder = new NodeBuilder($"object_{i}").WithLocalTranslation(new Vector3(obj.BonePosition.X, obj.BonePosition.Y, obj.BonePosition.Z));
+            sceneBuilder.AddNode(builder);
+            nodes[obj] = builder;
+        }
+        */
+        
+        for (int i = 0; i < model.Objects.Count; i++)
+        {
+            KmdObject obj = model.Objects[i];
+            var offset = model.GetObjectPosition(obj);
+            var vectorOffset = new Vector3(offset.X, offset.Y, offset.Z);
+
+            var mesh = new MeshBuilder<VertexPositionNormal, VertexTexture1, VertexJoints4>($"object_{i}");
+            obj.ToGltf(materials, mesh, i, vectorOffset);
+
+            var translation = Matrix4x4.CreateTranslation(new Vector3(obj.BonePosition.X, obj.BonePosition.Y, obj.BonePosition.Z));
+            sceneBuilder.AddRigidMesh(mesh, translation);
+        }
+
+        return sceneBuilder.ToGltf2();
     }
 }
