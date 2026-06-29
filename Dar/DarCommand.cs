@@ -45,9 +45,26 @@ public static class DarCommand
         listCommand.AddOption(listPlatformOption);
         listCommand.SetHandler(ListHandler, listFileArgument, listPlatformOption);
 
+        var convertCommand = new Command("convert", "Convert a .dar between PC (name-indexed) and PSX (hash-indexed) formats.\n" +
+            "PC format = u32 count + named entries; PSX format = flat hash-indexed entries (as found inside .stg).\n" +
+            "Bridges external 'psx_XXXX.pcx' texture dumps into a PSX archive that can be spliced into a stage.");
+        var convertSourceArgument = new Argument<FileInfo>("source", "Source .dar archive");
+        var convertTargetArgument = new Argument<FileInfo?>("target", "Output .dar archive")
+        {
+            Arity = ArgumentArity.ZeroOrOne
+        };
+        var convertFromOption = new Option<PlatformEnum>("--from", "Source format (pc = name-indexed, psx = hash-indexed)") { IsRequired = true };
+        var convertToOption = new Option<PlatformEnum>("--to", "Target format (pc = name-indexed, psx = hash-indexed)") { IsRequired = true };
+        convertCommand.AddArgument(convertSourceArgument);
+        convertCommand.AddArgument(convertTargetArgument);
+        convertCommand.AddOption(convertFromOption);
+        convertCommand.AddOption(convertToOption);
+        convertCommand.SetHandler(ConvertHandler, convertSourceArgument, convertTargetArgument, convertFromOption, convertToOption);
+
         darCommand.AddCommand(extractCommand);
         darCommand.AddCommand(packCommand);
         darCommand.AddCommand(listCommand);
+        darCommand.AddCommand(convertCommand);
 
         command.AddCommand(darCommand);
         return darCommand;
@@ -139,8 +156,10 @@ public static class DarCommand
         {
             var psxFiles = fileOrder.Select(file => new Psx.DarFile
             {
-                Hash = ushort.Parse(Path.GetFileNameWithoutExtension(file)),
-                Extension = ExtensionNames.Extensions.First(e => e.Value == Path.GetExtension(file)[1..]).Key,
+                // Accept decimal ("23400"), hex ("psx_5b68") and named files, and
+                // treat .pcx as .pcc, so a PC-format texture dump repacks to PSX.
+                Hash = StringExtensions.HashFromFileName(Path.GetFileNameWithoutExtension(file)),
+                Extension = ExtensionNames.ByteFromExtension(Path.GetExtension(file)),
                 Data = File.ReadAllBytes(Path.Combine(input.FullName, file))
             }).ToList();
 
@@ -158,6 +177,65 @@ public static class DarCommand
             default:
                 throw new NotImplementedException("Platform is not supported");
         }
+    }
+
+    private static void ConvertHandler(FileInfo source, FileInfo? target, PlatformEnum from, PlatformEnum to)
+    {
+        if (!source.Exists) throw new FileNotFoundException("Specified archive cannot be found", source.FullName);
+        if (from == to) throw new ArgumentException("--from and --to are the same format; nothing to convert");
+        target ??= new FileInfo($"{Path.GetFileNameWithoutExtension(source.FullName)}.{to.ToString().ToLowerInvariant()}.dar");
+
+        // Read the source into a common representation: hash + extension byte +
+        // a round-trippable name + payload. Order is preserved (it is significant
+        // for PSX hash-indexed archives, which the engine reads positionally).
+        var entries = new List<(ushort Hash, byte Ext, string Name, byte[] Data)>();
+
+        using (var inStream = source.OpenRead())
+        using (var reader = new BinaryReader(inStream))
+        {
+            switch (from)
+            {
+                case PlatformEnum.Pc:
+                    var archive = reader.ReadDarArchive();
+                    foreach (var pcEntry in archive.Files)
+                    {
+                        var nameNoExt = Path.GetFileNameWithoutExtension(pcEntry.Name);
+                        entries.Add((StringExtensions.HashFromFileName(nameNoExt), ExtensionNames.ByteFromExtension(Path.GetExtension(pcEntry.Name)), pcEntry.Name, pcEntry.Data));
+                    }
+                    break;
+                case PlatformEnum.Psx:
+                    while (reader.BaseStream.Position != reader.BaseStream.Length)
+                    {
+                        var psxEntry = Psx.BinaryReaderDarFileExtensions.ReadDarFile(reader);
+                        // Hex 'psx_XXXX' name round-trips back through HashFromFileName.
+                        entries.Add((psxEntry.Hash, psxEntry.Extension, $"psx_{psxEntry.Hash:x4}.{psxEntry.ExtensionName}", psxEntry.Data));
+                    }
+                    break;
+                default:
+                    throw new NotImplementedException("Source platform is not supported");
+            }
+        }
+
+        using var outStream = target.Create();
+        using var writer = new BinaryWriter(outStream);
+
+        switch (to)
+        {
+            case PlatformEnum.Pc:
+                var outArchive = new DarArchive
+                {
+                    Files = entries.Select(e => new DarFile { Name = e.Name, Data = e.Data }).ToList()
+                };
+                writer.Write(outArchive);
+                break;
+            case PlatformEnum.Psx:
+                foreach (var e in entries) writer.Write(new Psx.DarFile { Hash = e.Hash, Extension = e.Ext, Data = e.Data });
+                break;
+            default:
+                throw new NotImplementedException("Target platform is not supported");
+        }
+
+        Console.WriteLine($"Converted {entries.Count} entries ({from} -> {to}) -> {target.FullName}");
     }
 
     private static void ListHandler(FileInfo file, PlatformEnum platform)

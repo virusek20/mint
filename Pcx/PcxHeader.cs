@@ -1,4 +1,4 @@
-﻿using SkiaSharp;
+using SkiaSharp;
 
 namespace MetalMintSolid.Pcx;
 
@@ -114,6 +114,16 @@ public class PcxHeader
     /// Filler to bring header up to 128 bytes total. Can contain junk.
     /// </summary>
     public required byte[] Padding { get; set; } = new byte[40];
+
+    /// <summary>
+    /// True if VGA (8bpp, 1 plane, up to 256 colors). False if EGA (1bpp, 4 planes, up to 16 colors).
+    /// </summary>
+    public bool IsVga => BitsPerPlane == 8 && ColorPlanes == 1;
+
+    /// <summary>
+    /// True if EGA (1bpp, 4 planes, up to 16 colors).
+    /// </summary>
+    public bool IsEga => BitsPerPlane == 1 && ColorPlanes == 4;
 }
 
 public static class BinaryReaderPcxHeaderExtensions
@@ -150,7 +160,9 @@ public static class BinaryReaderPcxHeaderExtensions
         if (header.PaletteInfo != 1) throw new NotImplementedException("Grayscale images are not implemented");
         if (header.Encoding != 1) throw new NotImplementedException("Uncompressed images are not implemented");
 
-        if (header.BitsPerPlane != 1 || header.ColorPlanes != 4) throw new NotImplementedException("This image is probably not EGA");
+        if (!header.IsEga && !header.IsVga)
+            throw new NotImplementedException($"Unsupported PCX format: BitsPerPlane={header.BitsPerPlane}, ColorPlanes={header.ColorPlanes} (expected EGA 1/4 or VGA 8/1)");
+
         if (header.MgsMagic != 12345) throw new InvalidDataException($"MGSMagic is '{header.MgsMagic}', expected '12345'");
 
         return header;

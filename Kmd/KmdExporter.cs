@@ -32,20 +32,46 @@ public static class KmdExporter
         }
         else
         {
+            // Match each image in the texture folder to the KMD face-texture hash
+            // it satisfies. The hash is derived from the file NAME, but the naming
+            // convention differs by platform (see TextureHashFromFileName):
+            //   PC  -> arbitrary name hashed with GV_StrCode ("sna_face")
+            //   PSX -> the hash itself, decimal ("23400", from `dar extract
+            //          --platform psx`) or "psx_5B68" hex from external tooling.
+            // Only real raster files are considered: SharpGLTF cannot load .pcc /
+            // .pcx directly, so the folder must hold PNGs (run `pcx batchdecode`
+            // first). GroupBy guards against two files resolving to one hash.
             materials = Directory.GetFiles(texturePath)
-                .Select(p => Path.GetFileNameWithoutExtension(p))
-                .Distinct()
-                .ToDictionary(StringExtensions.GV_StrCode_80016CCC)
-                .Where(p => hashFiles.Contains(p.Key))
-                .Select(p => (p.Key, new MaterialBuilder(p.Key.ToString())
-                        .WithChannelImage("BaseColor", $"{texturePath}/{p.Value}.png")
-                        .WithUnlitShader())
-                ).ToDictionary();
+                .Where(IsLoadableImage)
+                .Select(p => (Hash: TextureHashFromFileName(Path.GetFileNameWithoutExtension(p)), Path: p))
+                .Where(p => hashFiles.Contains(p.Hash))
+                .GroupBy(p => p.Hash)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new MaterialBuilder(g.Key.ToString())
+                            .WithChannelImage("BaseColor", g.First().Path)
+                            .WithUnlitShader());
         }
 
         var isSkinned = model.Objects.Any(o => o.ParentBoneId != -1);
         return isSkinned ? GenerateSkinned(model, materials) : GenerateRigid(model, materials);
     }
+
+    private static readonly string[] _loadableImageExtensions = [".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"];
+
+    /// <summary>
+    /// True for raster files SharpGLTF can embed. PCX/PCC are excluded on purpose:
+    /// they must be converted to PNG (via <c>pcx batchdecode</c>) before export.
+    /// </summary>
+    private static bool IsLoadableImage(string path)
+        => _loadableImageExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
+
+    /// <summary>
+    /// Resolves the MGS texture hash that a texture file name refers to
+    /// (PC GV_StrCode names, PSX decimal hashes, or PSX "psx_XXXX" hex names).
+    /// </summary>
+    private static ushort TextureHashFromFileName(string nameNoExtension)
+        => StringExtensions.HashFromFileName(nameNoExtension);
 
     public static void ToGltf(this KmdObject model, Dictionary<ushort, MaterialBuilder> materials, MeshBuilder<VertexPositionNormal, VertexTexture1, VertexJoints4> mesh, int boneId, Vector3 offset)
     {

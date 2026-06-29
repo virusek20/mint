@@ -39,10 +39,16 @@ public class KmdObject
 
     public required List<ushort> PCXHashedFileNames { get; set; }
 
-    public void SetupParentBoneVertexPairs(KmdObject parentObject, KmdModel model)
+    public void SetupParentBoneVertexPairs(KmdObject parentObject, KmdModel model, float tolerance = 2.0f)
     {
         var selfObjectPos = model.GetObjectPosition(this);
         var parentObjectPos = model.GetObjectPosition(parentObject);
+
+        // Pair a seam vertex to the NEAREST parent vertex within `tolerance` units (not just an
+        // exact match). MGS seam vertices and GLTF round-trips through int16 land 1-2u apart, so the
+        // original `dist < 1` test missed them entirely, leaving the joint unpaired (no runtime merge
+        // and a static gap). Pairs found here are made exactly coincident later by KmdModel.BakeVertexPairs().
+        var maxDistSq = (double)tolerance * tolerance * 3.0; // per-axis tolerance, matches a `tolerance`-unit cube
 
         for (short i = 0; i < VertexCount; i++)
         {
@@ -51,6 +57,9 @@ public class KmdObject
             var ax = VertexCoordsTable[i].X + selfObjectPos.X;
             var ay = VertexCoordsTable[i].Y + selfObjectPos.Y;
             var az = VertexCoordsTable[i].Z + selfObjectPos.Z;
+
+            short best = -1;
+            double bestDist = double.MaxValue;
             for (short j = 0; j < parentObject.VertexCount; j++)
             {
                 var bx = parentObject.VertexCoordsTable[j].X + parentObjectPos.X;
@@ -61,13 +70,17 @@ public class KmdObject
                 var dy = by - ay;
                 var dz = bz - az;
 
-                var dist = dx * dx + dy * dy + dz * dz;
-                if (dist < 1)
+                var dist = (double)dx * dx + dy * dy + dz * dz;
+                if (dist < bestDist)
                 {
-                    var newVert = VertexCoordsTable[i] with { W = j };
-                    VertexCoordsTable[i] = newVert;
-                    break;
+                    bestDist = dist;
+                    best = j;
                 }
+            }
+
+            if (best != -1 && bestDist <= maxDistSq)
+            {
+                VertexCoordsTable[i] = VertexCoordsTable[i] with { W = best };
             }
         }
     }

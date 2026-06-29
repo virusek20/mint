@@ -17,7 +17,8 @@ public static class QuadRebuilder
             {
                 if (currentTriangle != checkTriangle &&
                     currentTriangle.SharesEdge(checkTriangle) &&
-                    Vector3.Dot(currentTriangle.Normal(), checkTriangle.Normal()) > 0.99)
+                    Vector3.Dot(currentTriangle.Normal(), checkTriangle.Normal()) > 0.99 &&
+                    currentTriangle.FormsConvexQuadWith(checkTriangle))
                 {
                     quads.Add(currentTriangle.MakeQuad(checkTriangle));
                     triangles.Remove(currentTriangle);

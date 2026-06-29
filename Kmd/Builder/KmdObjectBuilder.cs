@@ -92,6 +92,49 @@ public record Triangle(IVertexBuilder A, IVertexBuilder B, IVertexBuilder C, Mat
 
         return new(ordered[0], ordered[1], ordered[2], ordered[3], Material);
     }
+
+    /// <summary>
+    /// True only if merging this triangle with <paramref name="b"/> (which must share an edge with it)
+    /// produces a CONVEX quad. For a convex quad either triangulation diagonal fills the same area, so
+    /// the existing angle-sorted <see cref="MakeQuad"/> renders correctly. For a CONCAVE quad (one corner
+    /// inside the triangle of the other three) the renderer's fixed diagonal can cut outside the shape and
+    /// leave a hole, so such pairs must NOT be merged - they are kept as two separate triangles instead.
+    /// Convexity test: the shared edge and the unshared-corner segment are the quad's two diagonals; the
+    /// quad is convex iff those diagonals cross.
+    /// </summary>
+    public bool FormsConvexQuadWith(Triangle b)
+    {
+        var t1pos = new[] { A.GetGeometry().GetPosition(), B.GetGeometry().GetPosition(), C.GetGeometry().GetPosition() };
+        var t2pos = new[] { b.A.GetGeometry().GetPosition(), b.B.GetGeometry().GetPosition(), b.C.GetGeometry().GetPosition() };
+        var t2set = new HashSet<Vector3>(t2pos);
+        var t1set = new HashSet<Vector3>(t1pos);
+
+        var shared = t1pos.Where(t2set.Contains).ToList();
+        if (shared.Count != 2) return false; // not edge-adjacent: don't merge
+
+        var u1List = t1pos.Where(p => !t2set.Contains(p)).ToList();
+        var u2List = t2pos.Where(p => !t1set.Contains(p)).ToList();
+        if (u1List.Count != 1 || u2List.Count != 1) return false;
+
+        var normal = Normal();
+        var refv = Math.Abs(Vector3.Dot(normal, Vector3.UnitY)) > 0.99f ? Vector3.UnitX : Vector3.UnitY;
+        var xAxis = Vector3.Normalize(Vector3.Cross(refv, normal));
+        var yAxis = Vector3.Normalize(Vector3.Cross(normal, xAxis));
+        Vector2 P(Vector3 p) => new(Vector3.Dot(p, xAxis), Vector3.Dot(p, yAxis));
+
+        // diagonals: shared edge (shared[0]-shared[1]) vs unshared corners (u1-u2). Convex iff they cross.
+        return SegmentsProperlyCross(P(shared[0]), P(shared[1]), P(u1List[0]), P(u2List[0]));
+    }
+
+    private static bool SegmentsProperlyCross(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
+    {
+        static float Cross(Vector2 p, Vector2 q, Vector2 r) => (q.X - p.X) * (r.Y - p.Y) - (q.Y - p.Y) * (r.X - p.X);
+        var d1 = Cross(c, d, a);
+        var d2 = Cross(c, d, b);
+        var d3 = Cross(a, b, c);
+        var d4 = Cross(a, b, d);
+        return ((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0));
+    }
 }
 
 public record Quad(IVertexBuilder A, IVertexBuilder B, IVertexBuilder C, IVertexBuilder D, Material Material);
@@ -222,6 +265,11 @@ public class KmdObjectBuilder(KmdObject obj, Vector3Int32 objectPosition)
             ushort materialNum = 0;
 
             var materialHash = quad.Material.Name;
+
+            // Strip Blender duplicate suffixes like ".001", ".002" etc.
+            var dotIndex = materialHash.IndexOf('.');
+            if (dotIndex >= 0) materialHash = materialHash[..dotIndex];
+
             if (materialHash.Contains("_replace"))
             {
                 materialHash = materialHash.Replace("_replace", "");

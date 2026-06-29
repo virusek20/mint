@@ -60,8 +60,43 @@ public static class DirCommand
         if (!input.Exists) throw new FileNotFoundException("Archive source does not exist", input.FullName);
         target ??= new FileInfo($"{Path.GetFileNameWithoutExtension(input.FullName)}.dir");
 
+        // The directory is keyed by name, but stage ORDER still matters for a
+        // faithful round-trip (and anything that relies on enumeration order).
+        // extract writes order.txt; honor it here. Files not listed (newly added
+        // stages) are appended after the known order. Without order.txt we fall
+        // back to filesystem enumeration, which is non-deterministic.
+        var diskFiles = input.GetFiles()
+            .Where(f => !f.Name.Equals("order.txt", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        List<FileInfo> ordered;
+        var orderPath = Path.Combine(input.FullName, "order.txt");
+        if (File.Exists(orderPath))
+        {
+            // Match order.txt's (possibly control-char-padded) names against the
+            // sanitized names used for the extracted .stg files.
+            static string Sanitize(string s) => new string(s.Where(c => !char.IsControl(c)).ToArray()).Trim();
+
+            var byName = new Dictionary<string, FileInfo>();
+            foreach (var f in diskFiles)
+            {
+                var key = Sanitize(Path.GetFileNameWithoutExtension(f.Name));
+                byName.TryAdd(key, f);
+            }
+
+            ordered = [];
+            foreach (var rawName in File.ReadAllLines(orderPath))
+            {
+                var key = Sanitize(rawName);
+                if (key.Length == 0) continue;
+                if (byName.Remove(key, out var fi)) ordered.Add(fi);
+            }
+            ordered.AddRange(byName.Values); // any stages added since extract
+        }
+        else ordered = diskFiles;
+
         var offset = 2048;
-        var files = input.GetFiles().Select(file =>
+        var files = ordered.Select(file =>
         {
             var dir = new DirFile
             {

@@ -1,4 +1,4 @@
-﻿using MetalMintSolid.Kmd.Builder;
+using MetalMintSolid.Kmd.Builder;
 using SharpGLTF.Geometry;
 using SharpGLTF.Schema2;
 
@@ -6,19 +6,33 @@ namespace MetalMintSolid.Kmd;
 
 public static class KmdImporter
 {
-    public const long MAX_OBJ_VERTS = 126;
+    public const long MAX_OBJ_VERTS = 255;
 
     public static KmdModel FromGltf(ModelRoot root, KmdModel original)
     {
         var scene = root.DefaultScene;
         if (scene == null) throw new NotSupportedException("No default scene specified");
-        if (scene.VisualChildren.Count() != 1) throw new NotSupportedException("Too many root objects!");
 
-        var armature = scene.VisualChildren.First();
-        var meshes = armature.VisualChildren.Where(c => c.Mesh != null).ToList();
-        if (meshes.Count != 1) throw new NotSupportedException("Too many meshes!");
+        static IEnumerable<Node> EnumerateNodes(IEnumerable<Node> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                yield return node;
+                foreach (var child in EnumerateNodes(node.VisualChildren)) yield return child;
+            }
+        }
 
-        var meshNode = meshes.Single();
+        var allNodes = EnumerateNodes(scene.VisualChildren).ToList();
+        var skinnedMeshNode = allNodes.FirstOrDefault(n => n.Mesh != null && n.Skin != null);
+        if (skinnedMeshNode == null)
+        {
+            return FromGltfRigid(scene, original, allNodes);
+        }
+
+        var armature = scene.VisualChildren.FirstOrDefault();
+        if (armature == null) throw new NotSupportedException("No root object found");
+
+        var meshNode = skinnedMeshNode;
 
         var skin = meshNode.Skin;
         if (skin.JointsCount != original.Header.BoneCount) throw new NotSupportedException("Bone count does not match!");
@@ -139,9 +153,156 @@ public static class KmdImporter
                 obj.SetupParentBoneVertexPairs(parentBone, newModel);
             }
         }
+
+        // Bake the pairing so the written KMD has coincident seams (no joint gaps when viewed
+        // statically); the engine's runtime node-merging then becomes a no-op rather than the
+        // only thing holding the joints together.
+        newModel.BakeVertexPairs();
+
         return newModel;
     }
 
+
+    private static KmdModel FromGltfRigid(Scene scene, KmdModel original, List<Node> allNodes)
+    {
+        var meshNodes = allNodes.Where(n => n.Mesh != null).ToList();
+        if (meshNodes.Count == 0) throw new NotSupportedException("No meshes found in rigid model");
+
+        var totalObjectCount = Math.Max(meshNodes.Count, original.Objects.Count);
+
+        if (meshNodes.Count != original.Objects.Count)
+        {
+            Console.WriteLine($"Note: GLTF has {meshNodes.Count} mesh nodes, original KMD has {original.Objects.Count} objects.");
+            if (meshNodes.Count > original.Objects.Count)
+                Console.WriteLine($"  {meshNodes.Count - original.Objects.Count} extra mesh(es) will be added as new KMD objects with default metadata.");
+            else
+                Console.WriteLine($"  {original.Objects.Count - meshNodes.Count} original object(s) have no matching GLTF mesh and will be kept empty.");
+        }
+
+        var newModel = new KmdModel
+        {
+            Header = new KmdHeader
+            {
+                BoneCount = (uint)totalObjectCount,
+                ObjectCount = (uint)totalObjectCount,
+                BoundingBoxEnd = original.Header.BoundingBoxEnd,
+                BoundingBoxStart = original.Header.BoundingBoxStart
+            },
+            Objects = []
+        };
+
+        // Create objects for all original indices first (preserving metadata)
+        for (int i = 0; i < original.Objects.Count; i++)
+        {
+            var o = original.Objects[i];
+            newModel.Objects.Add(new KmdObject
+            {
+                Name = o.Name,
+                BitFlags = o.BitFlags,
+                BonePosition = o.BonePosition,
+                BoundingBoxEnd = new(int.MinValue, int.MinValue, int.MinValue),
+                BoundingBoxStart = new(int.MaxValue, int.MaxValue, int.MaxValue),
+                Padding = o.Padding,
+                ParentBoneId = o.ParentBoneId,
+                Extend = o.Extend,
+                NonPairingVertexIndicies = [],
+                VertexCoordsTable = [],
+                VertexOrderTable = [],
+                NormalVertexCoordsTable = [],
+                NormalVertexOrderTable = [],
+                UvTable = [],
+                PCXHashedFileNames = []
+            });
+        }
+
+        // Create new objects for any extra GLTF meshes beyond the original count
+        for (int i = original.Objects.Count; i < totalObjectCount; i++)
+        {
+            var lastOriginal = original.Objects[^1];
+            newModel.Objects.Add(new KmdObject
+            {
+                Name = $"object_{i}",
+                BitFlags = lastOriginal.BitFlags,
+                BonePosition = new(0, 0, 0),
+                BoundingBoxEnd = new(int.MinValue, int.MinValue, int.MinValue),
+                BoundingBoxStart = new(int.MaxValue, int.MaxValue, int.MaxValue),
+                Padding = lastOriginal.Padding,
+                ParentBoneId = 0,
+                Extend = lastOriginal.Extend,
+                NonPairingVertexIndicies = [],
+                VertexCoordsTable = [],
+                VertexOrderTable = [],
+                NormalVertexCoordsTable = [],
+                NormalVertexOrderTable = [],
+                UvTable = [],
+                PCXHashedFileNames = []
+            });
+        }
+
+        static int ParseObjectIndex(Node node)
+        {
+            string?[] names = [node.Name, node.Mesh?.Name];
+            foreach (var name in names)
+            {
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                var parts = name.Split('_');
+                var last = parts.LastOrDefault();
+                if (int.TryParse(last, out var index)) return index;
+            }
+
+            return -1;
+        }
+
+        var indexedNodes = meshNodes
+            .Select((node, fallbackIndex) => new { node, index = ParseObjectIndex(node), fallbackIndex })
+            .OrderBy(x => x.index == -1 ? int.MaxValue : x.index)
+            .ThenBy(x => x.fallbackIndex)
+            .ToList();
+
+        for (int i = 0; i < indexedNodes.Count; i++)
+        {
+            var entry = indexedNodes[i];
+            var objectIndex = entry.index == -1 ? i : entry.index;
+            if (objectIndex < 0 || objectIndex >= newModel.Objects.Count)
+            {
+                throw new NotSupportedException($"Rigid mesh node '{entry.node.Name}' maps to invalid object index {objectIndex}");
+            }
+
+            var triangles = entry.node.Mesh!.Primitives
+                .SelectMany(p => p.EvaluateTriangles())
+                .Select(t => (t.A, t.B, t.C, p: (Material)t.Material))
+                .Select(t => (t.A, t.B, t.C, t.p))
+                .ToList();
+
+            FromGltfObj(newModel, objectIndex, triangles
+                .Select(t => (t.A, t.B, t.C, t.p))
+                .ToList());
+        }
+
+        uint rootOffset = 32 + 88 * (uint)newModel.Objects.Count;
+        foreach (var obj in newModel.Objects)
+        {
+            obj.VertexCoordOffset = rootOffset;
+            rootOffset += obj.VertexCount * 8;
+
+            obj.NormalVertexCoordOffset = rootOffset;
+            rootOffset += obj.NormalVertexCount * 8;
+
+            obj.VertexOrderOffset = rootOffset;
+            rootOffset += (uint)obj.VertexOrderTable.Count * 4;
+
+            obj.NormalVertexOrderOffset = rootOffset;
+            rootOffset += (uint)obj.NormalVertexOrderTable.Count * 4;
+
+            obj.UVOffset = rootOffset;
+            rootOffset += obj.FaceCount * 4 * 2;
+
+            obj.TextureNameOffset = rootOffset;
+            rootOffset += (uint)obj.PCXHashedFileNames.Count * 2;
+        }
+
+        return newModel;
+    }
     private static KmdObject FromGltfObj(KmdModel newModel, int bone, List<(IVertexBuilder A, IVertexBuilder B, IVertexBuilder C, Material Material)> triangles)
     {
         var obj = newModel.Objects[bone];
